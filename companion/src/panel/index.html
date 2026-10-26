@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none';">
+    <meta charset="UTF-8" />
+    <title>梦藏 · 对话回看</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="story">
+    <div class="panel">
+      <div class="header">
+        <div class="thread-heading">
+          <div class="title">对话回看</div>
+          <div id="conv-title"></div>
+        </div>
+        <div class="review-count">待回看 <span class="badge" id="due-count"></span></div>
+      </div>
+      <main id="flow" class="flow" aria-label="按原对话顺序排列的回看条目"></main>
+      <footer class="connection"><span id="connection-status" role="status"></span><button id="refresh" type="button" aria-label="刷新梦藏回看条目">刷新</button></footer>
+    </div>
+    <script src="../appearance-renderer.js"></script>
+  <script src="script.js"></script>
+  </body>
+</html>

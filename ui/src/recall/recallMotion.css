@@ -1,0 +1,23 @@
+/* The reading column grows beside the list; content has no scaled text layer. */
+.rw-workspace .rw-review-grid {
+ grid-template-columns:minmax(0,1fr) minmax(0,0fr);
+ column-gap:0;
+ transition:grid-template-columns 240ms cubic-bezier(.22,1,.36,1),column-gap 240ms cubic-bezier(.22,1,.36,1);
+}
+.rw-workspace .rw-review-grid.has-reader {
+ grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+ column-gap:24px;
+}
+.rw-workspace .rw-card-list {position:relative}
+.rw-workspace .rw-reading-column {overflow:hidden}
+.rw-workspace [data-presence="exiting"] {pointer-events:none}
+@media(max-width:1180px) {
+ .rw-workspace .rw-review-grid.has-reader {grid-template-columns:minmax(0,.9fr) minmax(0,1fr);column-gap:20px}
+ .rw-workspace .rw-page-header {flex-wrap:wrap;gap:12px;padding-top:20px;padding-bottom:20px}
+ .rw-workspace .rw-title-group h1 {white-space:nowrap;flex-shrink:0}
+ .rw-workspace .rw-feed-title {flex-wrap:wrap;gap:12px}
+ .rw-workspace .rw-search {max-width:100%}
+}
+@media(prefers-reduced-motion:reduce) {
+ .rw-workspace .rw-review-grid {transition:none}
+}

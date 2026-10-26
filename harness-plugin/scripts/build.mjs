@@ -1,0 +1,15 @@
+import {readFile,mkdir,copyFile,writeFile} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+import {join} from 'node:path';
+const root=fileURLToPath(new URL('../',import.meta.url));
+const outputDirectory=process.env.MENGCANG_RECALL_PLUGIN_OUTPUT || join(root,'dist');
+await mkdir(outputDirectory,{recursive:true});
+for(const file of ['host.js','core.js','schemas.js','topic-model.js'])await copyFile(join(root,'src',file),join(outputDirectory,file));
+await copyFile(join(root,'../shared/private-rpc.cjs'),join(outputDirectory,'private-rpc.cjs'));
+await copyFile(join(root,'../shared/topic-contract.cjs'),join(outputDirectory,'topic-contract.cjs'));
+const sources=await Promise.all(['core.js','focus.js','dom.js','client.js'].map(file=>readFile(join(root,'src',file),'utf8')));
+const body=sources.join('\n').replace(/^export /gm,'');
+const output=`// Built for Harness 0.2.0-rc.2 / 0.2.1-rc.3; no external browser bundle.\nwindow.__ModuleLoader__.load({id:'@mengcang/harness-recall',factory(require){\n${body}\nreturn createClient(require('react'));\n}});\n`;
+new Function(output);
+await writeFile(join(outputDirectory,'client.js'),output);
+console.log('Built standalone Host and Client entrypoints.');

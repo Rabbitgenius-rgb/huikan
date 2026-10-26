@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import vm from 'node:vm';
+import {readFile} from 'node:fs/promises';
+import {Context} from '@deepseek-ai/cordis';
+import Registry from '@deepseek-ai/dsh-typert-registry';
+import Access from '@deepseek-ai/dsh-api-remote-access';
+import Gateway from '@deepseek-ai/dsh-api-gateway';
+import * as plugin from '../dist/host.js';
+test('real shipped Cordis and Typert mount plugin and five strict descriptors',async()=>{const ctx=new Context();const registry=ctx.plugin(Registry);const fiber=ctx.plugin(plugin,{instanceId:'fixture'});await new Promise(r=>setTimeout(r,20));assert.deepEqual(ctx.recallBridge.info({}),{instanceId:'fixture',version:'0.2.1-rc.3',supported:true});assert.equal(plugin.remoteInfo.descriptors.length,5);for(const d of plugin.remoteInfo.descriptors){assert.equal(d.result.mode,'strict');assert.equal(d.parameters.length,1);assert.equal(d.parameters[0].codec.mode,'strict');}await fiber.dispose();await registry.dispose();});
+test('built client uses shared module loader and exposes official Cordis apply',async()=>{let declaration;vm.runInNewContext(await readFile(new URL('../dist/client.js',import.meta.url),'utf8'),{window:{__ModuleLoader__:{load:x=>{declaration=x;}}}});assert.equal(declaration.id,'@mengcang/harness-recall');const client=declaration.factory(name=>{assert.equal(name,'react');return {createElement(){}};});assert.equal(typeof client.apply,'function');assert.ok(client.inject.includes('sessions'));});
+test('real Gateway strictly decodes recall/info and rejects unknown input',async()=>{const ctx=new Context();const fibers=[ctx.plugin(Registry),ctx.plugin(Access),ctx.plugin(Gateway,Gateway.Config({})),ctx.plugin(plugin,{instanceId:'fixture'})];await new Promise(r=>setTimeout(r,20));const peer={principal:{kind:'owner'},signal:new AbortController().signal,interactions:'answer'};const invoke=request=>ctx.typertGateway.dispatchRpc('recall/info',{args:{request}},new AbortController().signal,peer);const result=await invoke({});assert.equal(result.ok,true);assert.equal(result.value.instanceId,'fixture');assert.equal((await invoke({unexpected:'rejected'})).ok,false);for(const f of fibers.reverse())await f.dispose();});

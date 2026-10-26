@@ -1,0 +1,21 @@
+{
+  "name": "recall-workbench-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@tabler/icons-react": "3.46.0",
+    "motion": "13.5.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "vite": "6.4.2"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,26 @@
+{
+  "name": "huikan",
+  "version": "0.1.0",
+  "private": true,
+  "description": "回看：AI 对话内容的本地留存与回看工作台",
+  "scripts": {
+    "build": "npm --prefix ui run build && node scripts/build-desktop.mjs && node harness-plugin/scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs tests/*.test.cjs",
+    "start": "node scripts/run.mjs desktop",
+    "plugin:build": "node harness-plugin/scripts/build.mjs",
+    "plugin:pack": "npm --prefix harness-plugin run pack:local",
+    "companion": "node scripts/run.mjs companion"
+  },
+  "devDependencies": {
+    "electron": "44.4.5",
+    "esbuild": "0.25.12"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rabbitgenius-rgb/huikan.git"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

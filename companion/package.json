@@ -1,0 +1,14 @@
+{
+  "name": "mengcang-recall-companion",
+  "version": "0.1.3",
+  "description": "Isolated Harness recall companion for Mengcang",
+  "private": true,
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "electron": "45.0.0"
+  },
+  "license": "MIT"
+}

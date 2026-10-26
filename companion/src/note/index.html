@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none';">
+    <meta charset="UTF-8" />
+    <title>Sticky</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="card" class="card">
+      <div class="bar" id="bar">
+        <span class="bar-title" id="title"></span>
+        <button class="btn" id="btn-size" title="展开/还原">⤢</button>
+        <button class="btn" id="btn-gem" title="收起为标签">—</button>
+        <button class="btn" id="btn-close" title="取消贴出">✕</button>
+      </div>
+      <div class="points recall-excerpt" id="points"></div>
+      <div class="more" id="more">
+        <div class="summary" id="summary"></div>
+      </div>
+      <button class="link" id="btn-jump">回到原文</button>
+      <p class="note-status" id="note-status" role="status"></p>
+    </div>
+
+    <script src="../shared/render-text.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>

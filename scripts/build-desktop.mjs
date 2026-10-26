@@ -1,0 +1,12 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {build} from 'esbuild';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const dest=path.join(root,'desktop/build');
+await fs.mkdir(dest,{recursive:true});
+await build({entryPoints:[path.join(root,'desktop/main.cjs')],outfile:path.join(dest,'main.cjs'),bundle:true,platform:'node',format:'cjs',external:['electron'],target:'node22'});
+await fs.copyFile(path.join(root,'desktop/preload.cjs'),path.join(dest,'preload.cjs'));
+await fs.cp(path.join(root,'ui/dist'),path.join(dest,'renderer'),{recursive:true});
+await fs.writeFile(path.join(dest,'package.json'),JSON.stringify({name:'recall-workbench-only',version:'0.1.0',main:'main.cjs',private:true}));
+console.log('回看工作台已构建。');
