@@ -8,6 +8,7 @@ import { methods } from './schemas.js';
 import { SUPPORTED_VERSIONS } from './core.js';
 import { generateTopics } from './topic-model.js';
 import rpc from './private-rpc.cjs';
+import discovery from './connection-discovery.cjs';
 
 export const name='mengcang-recall';
 export const inject=['typert'];
@@ -29,7 +30,7 @@ export function identity(config={}) {
  return {instanceId,version,supported:SUPPORTED_VERSIONS.includes(version)};
 }
 export class RecallBridge extends TypertRemoteService {
- constructor(ctx, config={}) { super(ctx,'recallBridge',{namespace:'recall'});this.identity=identity(config);this.directory=config.bridgeDirectory || process.env.MENGCANG_RECALL_BRIDGE_DIR || join(homedir(),'Library/Application Support/Mengcang Recall/bridge'); }
+ constructor(ctx, config={}) { super(ctx,'recallBridge',{namespace:'recall'});this.identity=identity(config);this.config=config; }
  info(request) {methods.info.input.parse(request);return this.identity;}
  async forward(method,request) {
   methods[method].input.parse(request);
@@ -37,7 +38,7 @@ export class RecallBridge extends TypertRemoteService {
   const source=method==='capture'?request.externalSource:request;
   if(source.instanceId && source.instanceId!==this.identity.instanceId)throw new RemoteError('RECALL_INSTANCE','来源实例不匹配。');
   let result;
-  try {result=await rpc.callPrivate({directory:this.directory,service:'sticky',method,params:request,timeoutMs:method==='capture'?10000:3000});}
+  try {result=await rpc.callPrivate({directory:await discovery.resolveBridgeDirectory({config:this.config}),service:'sticky',method,params:request,timeoutMs:method==='capture'?10000:3000});}
   catch(error){throw new RemoteError('RECALL_BRIDGE',error.code==='UNAVAILABLE'?'回看浮窗尚未连接。':String(error.message || '本地回看连接失败。').slice(0,300));}
   if(method==='publishContext'&&result?.contextProtocol!==2)throw new RemoteError('RECALL_CONTEXT_PROTOCOL','请同时更新回看插件与浮窗，并重新加载 Harness 页面。');
   return methods[method].output.parse(result);
@@ -53,12 +54,14 @@ export function apply(ctx,config={}){
  // Optional model integration never blocks capture, context follow or source navigation.
  ctx.inject(['llm','agentDefaultModel'], modelContext=>{
   let closed=false,server;
-  const directory=config.bridgeDirectory || process.env.MENGCANG_RECALL_BRIDGE_DIR || join(homedir(),'Library/Application Support/Mengcang Recall/bridge');
-  const own=identity(config);
-  const startup=rpc.startPrivateServer({directory,service:'harness-topics',handlers:{generate:async request=>{
-   if(request?.instanceId!==own.instanceId)throw Error('主题整理来源实例不匹配');
-   return generateTopics(modelContext,request);
-  }}}).then(async value=>{server=value;if(closed)await value.close();}).catch(()=>{ /* The companion reports model connection failures, without logging private content. */ });
-  modelContext.effect(()=>()=>{closed=true;return startup.then(()=>server?.close());});
+  const own=identity(config);let directory='',refreshing=null;
+  const refresh=()=>{if(closed||refreshing)return refreshing;
+   refreshing=(async()=>{const next=await discovery.resolveBridgeDirectory({config});if(next===directory&&server)return;await server?.close();server=null;directory=next;
+    const candidate=await rpc.startPrivateServer({directory,service:'harness-topics',handlers:{generate:async request=>{if(request?.instanceId!==own.instanceId)throw Error('主题整理来源实例不匹配');return generateTopics(modelContext,request);}}});
+    if(closed)await candidate.close();else server=candidate;
+   })().catch(()=>{}).finally(()=>{refreshing=null;});return refreshing;
+  };
+  void refresh();const timer=setInterval(()=>void refresh(),2000);timer.unref?.();
+  modelContext.effect(()=>async()=>{closed=true;clearInterval(timer);await refreshing;await server?.close();});
  });
 }

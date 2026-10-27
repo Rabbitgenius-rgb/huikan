@@ -7,14 +7,17 @@ import {connectRecallRenderer,createRecallLibrary} from './sublime/recallLibrary
 import {createRendererQuitController,lockWorkspaceInput} from './sublime/rendererQuit.js';
 import {archiveRecall,updateRecallModel,archivedRecallCards} from './recallSession.js';
 import {valueOf} from './valueOf.js';
+import ConnectionSettings from './ConnectionSettings.jsx';
+import {useAppSettings} from './useAppSettings.js';
+import './settings.css';
 
 const api=window.mengcang;
 const demo=!api&&new URLSearchParams(location.search).get('demo')==='1';
 const examples=[
  ['给阅读留一点空白','值得留下的内容，不必马上归类。隔一段时间重新遇见它，新的连接才会慢慢出现。','阅读与知识的连接'],
- ['把想法变成可以检验的问题','先找出最依赖的假设，再设计一个小试验。看到什么结果时，我们会决定继续、调整或停止？','工具与产品设计'],
- ['工具顺着人的习惯生长','先理解一个人想做什么，再决定呈现哪些工具。为使用者保留选择，也让第一次打开页面的人知道从哪里开始。','工具与产品设计'],
- ['两次阅读之间','把当时的触动留下，再带着现在的问题回到原文。新的理解，发生在两次阅读之间。','阅读与知识的连接'],
+ ['把想法变成可以检验的问题','- [ ] 找出最依赖的假设\n- [ ] 设计一个小试验\n- [x] 写下继续、调整或停止的判断条件','工具与产品设计'],
+ ['让接口返回清楚的状态','先用一个小函数表示连接状态：\n\n```js\nfunction connectionLabel(ready) {\n  return ready ? \'已连接\' : \'等待连接\';\n}\n```\n\n状态来自真实握手，方便使用者知道下一步。','工具与产品设计'],
+ ['两次阅读之间','把当时的触动留下，再带着现在的问题回到原文。示例参考链接：https://example.org/reading','阅读与知识的连接'],
  ['记录当时，也留给以后','原文、来源和保存时间一起留住。未来回看时，仍然知道这段话来自哪一次对话。','关于时间与生活'],
 ];
 
@@ -31,9 +34,10 @@ async function seedDemo(session,identity){
 
 export default function RecallApp(){
  const [identity,setIdentity]=useState(null),[state,setState]=useState(null),[issue,setIssue]=useState('');
- const root=useRef(null);
+ const root=useRef(null),[showSettings,setShowSettings]=useState(false);
+ const appSettings=useAppSettings(api);
  useEffect(()=>{let live=true;document.title='回看工作台';
-  const load=async()=>{try{const id=api?valueOf(await api.status())?.identity?.id:demo?'huikan-isolated-demo-v1':'huikan-browser-local-v1';if(!id)throw Error('未能确认回看资料身份，未打开其他资料。');if(live)setIdentity(id);}catch(error){if(live)setIssue(error.message);}};
+  const load=async()=>{try{const id=api?valueOf(await api.status())?.identity?.id:demo?'huikan-isolated-demo-v2':'huikan-browser-local-v1';if(!id)throw Error('未能确认回看资料身份，未打开其他资料。');if(live)setIdentity(id);}catch(error){if(live)setIssue(error.message);}};
   void load();return()=>{live=false;};
  },[]);
  const session=useMemo(()=>identity?createWorkspaceSession(createWorkspaceStore(identity)):null,[identity]);
@@ -52,7 +56,8 @@ export default function RecallApp(){
  async function commit(producer){try{const next=await session.commit(producer);setState({...next,drafts:session.drafts()});setIssue('');return next;}catch(error){setIssue(error.message);throw error;}}
  if(!state)return <main className="recall-loading" role="status"><h1>回看</h1><p>{issue||'正在读取本机摘录…'}</p>{issue&&<button onClick={()=>location.reload()}>重新打开</button>}</main>;
  return <div ref={root} className="recall-only-root">
-  <RecallWorkbench cards={recallCards(state)} archivedCards={archivedRecallCards(state)} model={state.drafts[WORKBENCH_KEY]} api={api} demo={demo} onUpdate={producer=>commit(current=>updateRecallModel(current,producer))} onDelete={id=>commit(current=>archiveRecall(current,id,true))} onRestore={id=>commit(current=>archiveRecall(current,id,false))}/>
+  <RecallWorkbench cards={recallCards(state)} archivedCards={archivedRecallCards(state)} model={state.drafts[WORKBENCH_KEY]} settings={appSettings.settings} onOpenSettings={()=>setShowSettings(true)} api={api} demo={demo} onUpdate={producer=>commit(current=>updateRecallModel(current,producer))} onDelete={id=>commit(current=>archiveRecall(current,id,true))} onRestore={id=>commit(current=>archiveRecall(current,id,false))}/>
+  {showSettings&&<ConnectionSettings api={api} settings={appSettings.settings} onUpdate={appSettings.update} error={appSettings.error} onClose={()=>setShowSettings(false)}/>}
   {issue&&<div className="recall-save-error" role="alert">{issue}<button onClick={()=>setIssue('')} aria-label="关闭保存提示">×</button></div>}
  </div>;
 }

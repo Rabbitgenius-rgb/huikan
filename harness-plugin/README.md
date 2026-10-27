@@ -15,15 +15,13 @@ npm run plugin:pack
 
 当前适配版本：`0.2.0-rc.2` 与 `0.2.1-rc.3`。未知版本会拒绝留存。宿主版本升级可能需要重新适配正文 DOM 和来源定位接口。
 
-请让 Harness、浮窗和工作台使用同一个绝对 `MENGCANG_RECALL_BRIDGE_DIR`，并在启动 Harness 进程前设置该变量；设置变量后需重启已运行的宿主。
+## 自动连接
 
-在仓库根目录启动 Harness 的终端中，例如：
+配合回看 0.2.0 桌面版，插件自动发现同一用户运行中的回看桥接。推荐从回看“连接与识别设置”中点击“安装 / 更新回看插件”，正常重启 Harness 后启用插件。首次安装前需打开过一次 Harness，使宿主初始化桌面 profile。
 
-```sh
-export MENGCANG_RECALL_BRIDGE_DIR="$PWD/.local/bridge"
-```
+Host 每次请求会重新解析发现信息；可选主题服务也会跟随本机桥接变化。发现文件位于 `~/Library/Application Support/Huikan/connection.json`，目录和文件分别限制为当前用户可访问。该文件不含正文、账号或模型密钥。
 
-再通过该宿主版本支持的命令或启动流程打开 Harness。已有桌面进程需要正常退出后重启，才能继承新的环境变量。
+已有 `bridgeDirectory` 插件配置、`MENGCANG_RECALL_BRIDGE_DIR` 环境变量仍优先，用于调试或兼容旧部署。显式配置指向旧实例时不会被自动发现覆盖。隔离测试可用 `HUIKAN_DISCOVERY_FILE` 指定独立发现文件。
 
 ## 实现边界
 

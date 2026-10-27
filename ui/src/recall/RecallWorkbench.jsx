@@ -8,6 +8,7 @@ import './recallWorkbench.css';
 import './recallWorkspace.css';
 import './recallMotion.css';
 import {valueOf} from '../valueOf.js';
+import {ContentBadge,ContentComponents} from '../ContentComponents.jsx';
 
 const icons={review:IconBookmark};
 const names={review:'回看'};
@@ -16,7 +17,7 @@ function Dot(){return <span className="rw-dot" aria-label="未读"/>;}
 function date(value){return value?new Date(value).toLocaleDateString('zh-CN',{month:'long',day:'numeric'}):'日期未记录';}
 const sourceName=c=>c.externalSource?.sessionTitle||c.sourceTitle||'未命名线程';
 
-export default function RecallWorkbench({cards,model:rawModel,onUpdate,onDelete,onRestore,api,demo=false,archivedCards=[]}){
+export default function RecallWorkbench({cards,model:rawModel,onUpdate,onDelete,onRestore,api,demo=false,archivedCards=[],settings={},onOpenSettings}){
  const [showArchived,setShowArchived]=useState(false);
  const allActive=cards;cards=showArchived?archivedCards:cards;
  const model=normalizeWorkbench(rawModel),[page,setPage]=useState('review'),[query,setQuery]=useState(''),[filter,setFilter]=useState('all'),[topic,setTopic]=useState(''),[selected,setSelected]=useState(null),[issue,setIssue]=useState('');
@@ -49,7 +50,7 @@ export default function RecallWorkbench({cards,model:rawModel,onUpdate,onDelete,
     {topics.map(t=><button key={t.id} className={activeTopic===t.id?'selected':''} aria-pressed={activeTopic===t.id} title={t.title} aria-label={`线程：${t.title}，${t.cards.length} 条摘录`} onClick={()=>{setTopic(t.id);setSelected(null);setQuery('');setFilter('all');}}><IconMessageCircle size={15}/><span>{t.title}</span><span className="rw-thread-meta"><small>{t.cards.length}</small>{t.cards.some(c=>unread(c,model))&&<Dot/>}</span></button>)}
     {!topics.length&&<p>标注的摘录会按来源线程显示在这里。</p>}
    </div></>}
-   <div className="rw-sidebar-bottom"><div className="rw-local-note"><span/>{demo?'隔离演示 · 示例数据':'内容保存在本机'}</div></div>
+   <div className="rw-sidebar-bottom"><button className="hk-settings-entry" onClick={onOpenSettings}><IconSettings size={17}/><span>连接与识别设置</span></button><div className="rw-local-note"><span/>{demo?'隔离演示 · 示例数据':'内容保存在本机'}</div></div>
   </aside>
   <div className="rw-main">
    {issue&&!deleting&&<div className="rw-error" role="alert"><span>{issue}</span><button onClick={()=>setIssue('')} aria-label="关闭错误提示"><IconX size={16}/></button></div>}
@@ -61,10 +62,10 @@ export default function RecallWorkbench({cards,model:rawModel,onUpdate,onDelete,
       <div className="rw-filters" role="group" aria-label="回看筛选">{[['all','全部',scopedCards.length],['unread','未读',scopedUnread],['read','已读',scopedCards.length-scopedUnread]].map(([id,label,n])=><button key={id} className={filter===id?'active':''} aria-pressed={filter===id} onClick={()=>setFilter(id)}>{label}<small>{n}</small></button>)}</div>
       <div className="rw-card-list"><AnimatePresence initial={false} mode="popLayout">{visible.map(card=>{const text=recallDisplayText(card,titles);return <RecallMotionRow key={card.id} className={`rw-recall-card ${unread(card,model)?'is-unread':'is-read'} ${chosen?.id===card.id?'selected':''}`}><button className="rw-card-open" aria-label={`打开笔记：${text.title}`} onClick={()=>void open(card).catch(()=>{})}>
        <span className="rw-card-status">{unread(card,model)?<Dot/>:<span className="rw-read-mark" aria-label="已读"/>}</span>
-       <div className="rw-card-content"><div className="rw-card-meta"><span><IconMessageCircle size={13}/><span>{sourceName(card)}</span></span><time dateTime={card.recallReceipt.savedAt}>{date(card.recallReceipt.savedAt)} · 第 {card.externalSource.turn||1} 轮</time></div><h3>{text.title}</h3>{text.body&&<p>{text.body}</p>}</div>
+       <div className="rw-card-content"><div className="rw-card-meta"><span><IconMessageCircle size={13}/><span>{sourceName(card)}</span></span><time dateTime={card.recallReceipt.savedAt}>{date(card.recallReceipt.savedAt)} · 第 {card.externalSource.turn||1} 轮</time></div><h3>{text.title}</h3>{settings.recognizeContent&&<ContentBadge text={card.body}/>}{text.body&&<p>{text.body}</p>}</div>
       </button>{(showArchived||onDelete)&&<button className="rw-card-delete rw-icon" type="button" title={showArchived?'恢复笔记':'删除笔记'} aria-label={`${showArchived?'恢复笔记':'删除笔记'}：${text.title}`} onClick={()=>{if(showArchived)void onRestore(card.id).catch(e=>setIssue(e.message));else requestDelete(card);}}>{showArchived?<IconCheck size={16}/>:<IconTrash size={16}/>}</button>}</RecallMotionRow>;})}</AnimatePresence>{!visible.length&&<div className="rw-empty"><IconBookmark size={28} stroke={1.2}/><h3>{showArchived?'没有归档摘录':cards.length?'没有匹配的摘录':'值得重读的内容，会留在这里'}</h3><p>{showArchived?'归档的摘录会保留在这里，可以随时恢复。':cards.length?'试试其他关键词或筛选条件。':'在对话里标注“添加回看”，就能回来接着想。'}</p>{(query||filter!=='all')&&<button className="rw-secondary" onClick={()=>{setQuery('');setFilter('all');}}>清除筛选</button>}</div>}</div>
      </section>
-     <AnimatePresence initial={false}>{chosen&&<RecallMotionReader key="reader" className="rw-reading-column" onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();closeReader();}}}><article className="rw-reader" ref={reader} tabIndex={-1} aria-label="摘录原文"><div className="rw-section-heading"><span className="rw-reader-label"><IconBookmark size={14}/>摘录原文</span><div className="rw-reader-tools">{onDelete&&!showArchived&&<IconButton label="删除当前笔记" onClick={()=>requestDelete(chosen)}><IconTrash size={16}/></IconButton>}<IconButton label="关闭摘录" onClick={closeReader}><IconX size={17}/></IconButton></div></div><h2>{chosenText.title}</h2><div className="rw-reader-source"><IconMessageCircle size={14}/>{sourceName(chosen)}<small>第 {chosen.externalSource.turn||1} 轮 · {date(chosen.recallReceipt.savedAt)}</small></div><SafeRichBody text={chosenText.body} className="rw-rich-body"/></article></RecallMotionReader>}</AnimatePresence>
+     <AnimatePresence initial={false}>{chosen&&<RecallMotionReader key="reader" className="rw-reading-column" onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();closeReader();}}}><article className="rw-reader" ref={reader} tabIndex={-1} aria-label="摘录原文"><div className="rw-section-heading"><span className="rw-reader-label"><IconBookmark size={14}/>摘录原文</span><div className="rw-reader-tools">{onDelete&&!showArchived&&<IconButton label="删除当前笔记" onClick={()=>requestDelete(chosen)}><IconTrash size={16}/></IconButton>}<IconButton label="关闭摘录" onClick={closeReader}><IconX size={17}/></IconButton></div></div><h2>{chosenText.title}</h2><div className="rw-reader-source"><IconMessageCircle size={14}/>{sourceName(chosen)}<small>第 {chosen.externalSource.turn||1} 轮 · {date(chosen.recallReceipt.savedAt)}</small></div>{settings.recognizeContent&&settings.showRecommendations&&<ContentComponents key={chosen.id} text={chosenText.body}/>}<SafeRichBody text={chosenText.body} className="rw-rich-body"/></article></RecallMotionReader>}</AnimatePresence>
     </div>
    </main>}
   </div>

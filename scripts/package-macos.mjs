@@ -1,0 +1,15 @@
+import {packager} from '@electron/packager';
+import {execFileSync} from 'node:child_process';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+if(process.platform!=='darwin')throw Error('请在 macOS 上构建 macOS 安装包。');
+const version=JSON.parse(await fs.readFile(path.join(root,'package.json'),'utf8')).version;
+const out=path.resolve(process.env.HUIKAN_PACKAGE_OUT||path.join(root,'../huikan-release'));
+const apps=await packager({dir:path.join(root,'desktop/build'),out,name:'回看',executableName:'Huikan',appBundleId:'io.huikan.desktop',appVersion:version,electronVersion:'44.4.5',platform:'darwin',arch:'arm64',asar:false,prune:false,overwrite:true,...(process.env.HUIKAN_ELECTRON_ZIP_DIR?{electronZipDir:path.resolve(process.env.HUIKAN_ELECTRON_ZIP_DIR)}:{})});
+const app=path.join(apps[0],'回看.app');
+execFileSync('/usr/bin/codesign',['--force','--deep','--sign','-',app],{stdio:'inherit'});
+const zip=path.join(out,`Huikan-${version}-mac-arm64.zip`);
+execFileSync('/usr/bin/ditto',['-c','-k','--sequesterRsrc','--keepParent',app,zip]);
+console.log(zip);

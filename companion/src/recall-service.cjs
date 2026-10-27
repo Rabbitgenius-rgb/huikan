@@ -281,12 +281,13 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     if (v.ok) n.resolve({ ok: true }); else n.reject(fail(typeof v.code === 'string' ? v.code.slice(0, 100) : 'SOURCE_UNAVAILABLE', typeof v.message === 'string' ? v.message.slice(0, 500) : '未能定位原文；收藏内容仍保留'));
     return { accepted: true };
   }
+  function connectionStatus(){const live=[...views.values()].filter(liveView);return {protocol:1,connected:live.length>0,hostVersion:live[0]?.version||null};}
   async function close() {
     closed = true;
     for (const n of navigations.values()) { clearTimeout(n.timeout); n.reject(fail('CLOSED', '浮窗已退出')); }
     navigations.clear(); await Promise.allSettled([...inFlight.values()]); await writes;
   }
-  return { events, handlers: { publishContext, capture, pollCommands, navigationResult }, snapshot, refresh, retry, getItem, markRead, setReview, setPin, setMode, requestNavigation, pinnedLayouts: () => structuredClone(data.pinned), close };
+  return { events, handlers: { publishContext, capture, pollCommands, navigationResult, connectionStatus }, snapshot, refresh, retry, getItem, markRead, setReview, setPin, setMode, requestNavigation, pinnedLayouts: () => structuredClone(data.pinned), close };
 }
 
 module.exports = { createRecallService, captureOf, sourceOf, itemOf, VERSION, SUPPORTED_VERSIONS };

@@ -7,6 +7,7 @@ await mkdir(outputDirectory,{recursive:true});
 for(const file of ['host.js','core.js','schemas.js','topic-model.js'])await copyFile(join(root,'src',file),join(outputDirectory,file));
 await copyFile(join(root,'../shared/private-rpc.cjs'),join(outputDirectory,'private-rpc.cjs'));
 await copyFile(join(root,'../shared/topic-contract.cjs'),join(outputDirectory,'topic-contract.cjs'));
+await copyFile(join(root,'../shared/connection-discovery.cjs'),join(outputDirectory,'connection-discovery.cjs'));
 const sources=await Promise.all(['core.js','focus.js','dom.js','client.js'].map(file=>readFile(join(root,'src',file),'utf8')));
 const body=sources.join('\n').replace(/^export /gm,'');
 const output=`// Built for Harness 0.2.0-rc.2 / 0.2.1-rc.3; no external browser bundle.\nwindow.__ModuleLoader__.load({id:'@mengcang/harness-recall',factory(require){\n${body}\nreturn createClient(require('react'));\n}});\n`;

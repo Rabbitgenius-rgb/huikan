@@ -17,6 +17,7 @@ const diagnostics = require('./window-diagnostics.cjs').createWindowDiagnostics(
 let bridge, refreshTimer, quitAllowed = false;
 const primary = app.requestSingleInstanceLock();
 if (!primary) app.quit();
+if(process.send){process.on('message',value=>{if(value?.type==='huikan-quit')app.quit();});process.once('disconnect',()=>app.quit());}
 const { state, PRELOAD, pinnedIds } = require('./state');
 const settings = require('./settings');
 const stickies = require('./stickies');
@@ -282,13 +283,13 @@ app.on('before-quit', event => {
   event.preventDefault();
   if (state.quitting) return;
   state.quitting = true;
-  clearInterval(refreshTimer);
-  nativeFrontend?.close();
   void (async () => {
-    await bridge?.close();
-    await appearance?.close();
-    await topicOrganizer?.close();
     await stickies.persistAll();
+    await appearance?.close();
+    clearInterval(refreshTimer);
+    nativeFrontend?.close();
+    await bridge?.close();
+    await topicOrganizer?.close();
     await state.service.close();
     quitAllowed = true; app.quit();
   })().catch(error => { state.quitting = false; console.error('Recall state not saved:', error.code || 'SAVE_FAILED'); });
