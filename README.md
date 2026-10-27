@@ -20,6 +20,14 @@
 
 **阶段：早期开发版。** 当前验证以 macOS Apple Silicon 为主；可构建预览安装包，尚无 Developer ID 签名与 Apple 公证。内容识别使用本机规则，完整 Codex 留存适配、开放组件接口与社区组件分享属于后续计划，详见 [发展计划](docs/ROADMAP.md)。
 
+## 下载安装
+
+[**下载 macOS Apple Silicon 预览包（0.2.0）**](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.2.0/Huikan-0.2.0-mac-arm64.zip) · [发行说明与全部附件](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.2.0)
+
+适用于 M 系列芯片 Mac。下载 ZIP 后解压，将“回看.app”移到“应用程序”目录，再打开使用；配套 Harness 插件已内置，无需另行下载源码或安装 Node.js。首次连接步骤见下文“接入 DeepSeek Harness”。
+
+当前为开发预览包，尚无 Developer ID 签名与 Apple 公证，macOS 可能阻止打开；尚未完成干净机器安装验证。Intel Mac 与 Windows 安装包暂未提供。
+
 ## 快速体验界面
 
 需要 Node.js 22 或更新版本、npm。
