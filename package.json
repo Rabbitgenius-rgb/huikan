@@ -10,7 +10,9 @@
     "plugin:build": "node harness-plugin/scripts/build.mjs",
     "plugin:pack": "npm --prefix harness-plugin run pack:local",
     "companion": "node scripts/run.mjs companion",
-    "package:mac": "npm run build && node scripts/package-macos.mjs"
+    "package:mac": "npm run build && node scripts/package-macos.mjs",
+    "package:mac:check": "node scripts/package-macos.mjs --check-release",
+    "package:mac:release": "npm run package:mac:check && npm run build && node scripts/package-macos.mjs --release"
   },
   "devDependencies": {
     "@electron/packager": "^20.3.0",

@@ -85,6 +85,24 @@ npm run package:mac
 
 输出为仓库旁 `huikan-release/Huikan-0.2.0-mac-arm64.zip`。解压后将“回看.app”放到应用目录即可试用。当前仅提供 Apple Silicon 构建脚本和本机临时签名，尚未完成干净机器安装验证、Developer ID 签名与 Apple 公证，不应视作正式稳定发行。
 
+## 正式签名与 Apple 公证
+
+当前公开下载的 0.2.0 仍为未公证预览包。正式公证流程已提供构建入口，但需要发布者先开通 Apple Developer Program，并在本机配置有效的 **Developer ID Application** 发布证书；Apple Development 测试证书不适用于此流程。
+
+公证凭据只保存在 macOS 钥匙串中。在本机终端运行 `xcrun notarytool store-credentials huikan-notary`，由发布者在交互提示中完成账号、公证凭据与开发团队的配置。不要把密码、私钥或公证凭据写入源码、发布附件或 GitHub 日志。
+
+```sh
+export HUIKAN_NOTARY_PROFILE=huikan-notary
+npm run package:mac:check
+npm run package:mac:release
+```
+
+如果本机有多个发布证书，还需用 `HUIKAN_SIGN_IDENTITY` 指定其中一个证书标识。检查命令只核对本机证书与配置名称，不代表 Apple 已接受公证或已验证账号授权。
+
+正式流程使用安全时间戳、Hardened Runtime 和 Electron 所需的 JIT 权限，签名失败即停止；完成 Apple 公证、附加公证票据后，必须通过签名、票据和 Gatekeeper 检查，才会输出 ZIP。默认输出在 `huikan-release/notarized/`，避免覆盖现有预览包。只有实际公证通过并完成下载启动验证后，才应更新公开下载附件和“已公证”状态。
+
+依据：[Apple 公证要求](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)、[开发者会员注册](https://developer.apple.com/programs/enroll/)、[Electron 公证工具](https://github.com/electron/notarize)。
+
 ## 开发与测试
 
 ```sh
