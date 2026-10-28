@@ -36,11 +36,15 @@ jobs:
       - name: Launch, save, and restore in the installed application
         shell: pwsh
         run: node scripts/smoke-packaged.cjs "$env:HUIKAN_INSTALLED_EXE"
+      - name: Prepare downloadable files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist/windows -Force | Out-Null
+          Copy-Item ../huikan-release/windows/Huikan-*-windows-x64-setup.exe dist/windows/
+          Copy-Item harness-plugin/packages/mengcang-harness-recall-*.tgz dist/windows/
       - uses: actions/upload-artifact@v4
         with:
           name: huikan-windows-x64
-          path: |
-            ../huikan-release/windows/Huikan-*-windows-x64-setup.exe
-            harness-plugin/packages/mengcang-harness-recall-*.tgz
+          path: dist/windows/*
           if-no-files-found: error
           retention-days: 14

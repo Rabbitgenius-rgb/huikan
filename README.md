@@ -26,6 +26,8 @@
 
 双击安装程序，按向导安装后打开“回看”。无需另装 Node.js；工作台和浮窗一起安装。Windows 安装包未做代码签名，首次运行可能显示“未知发布者”或 SmartScreen 提示；请核对下载来源为本项目的 GitHub 发行页。组织策略禁止运行未签名程序时，需要管理员按其策略处理。
 
+Windows 版已在 GitHub Windows 构建环境中实际安装，工作台与浮窗启动、中文资料路径、示例原文保存、重复请求去重和重启恢复检查通过。此检查使用合成摘录，不等同于真实 Harness 对话界面验收。
+
 Windows 版的 Harness 插件需通过宿主支持的本地插件安装流程导入 [配套插件包（0.2.1）](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.2.1/mengcang-harness-recall-0.2.1.tgz)。当前未验证 Windows Harness 图形界面的完整安装与来源回跳，不提供 Windows 一键识别及安装宿主插件的承诺；插件安装成功并启用后使用本机自动发现。
 
 [**下载 macOS Apple Silicon 预览包（0.2.0）**](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.2.0/Huikan-0.2.0-mac-arm64.zip) · [发行说明与全部附件](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.2.0)
