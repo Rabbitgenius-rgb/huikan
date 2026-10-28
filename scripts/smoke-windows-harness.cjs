@@ -10,7 +10,7 @@ const assert=require('node:assert/strict');
 const {spawn,execFile}=require('node:child_process');
 const {promisify}=require('node:util');
 const {callPrivate}=require('../shared/private-rpc.cjs');
-const {inspectHarness}=require('../desktop/harness-detection.cjs');
+const {inspectHarness,detectHarness}=require('../desktop/harness-detection.cjs');
 const runFile=promisify(execFile);
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const exited=child=>child.exitCode!==null||child.signalCode!==null;
@@ -50,10 +50,10 @@ async function main(){
  await Promise.all([fs.mkdir(appData,{recursive:true}),fs.mkdir(localAppData,{recursive:true}),fs.writeFile(path.join(base,'empty.npmrc'),'')]);
  const env={...process.env,DSH_HOME:path.join(base,'dsh'),APPDATA:appData,LOCALAPPDATA:localAppData,
   HUIKAN_DATA_HOME:path.join(base,'desktop'),HUIKAN_COMPANION_HOME:path.join(base,'companion'),
-  HUIKAN_DISCOVERY_FILE:path.join(base,'discovery','connection.json'),HUIKAN_HARNESS_APP:harnessExe,
+  HUIKAN_DISCOVERY_FILE:path.join(base,'discovery','connection.json'),
   MENGCANG_RECALL_USER_DATA:path.join(base,'companion'),MENGCANG_RECALL_BRIDGE_DIR:directory,
   NPM_CONFIG_USERCONFIG:path.join(base,'empty.npmrc'),NPM_CONFIG_CACHE:path.join(base,'npm-cache'),NPM_CONFIG_REGISTRY:'https://registry.npmjs.org/'};
- for(const name of Object.keys(env))if(name==='ELECTRON_RUN_AS_NODE'||name==='NODE_OPTIONS'||name==='MENGCANG_RECALL_NATIVE_UI'||name==='MENGCANG_RECALL_DIAGNOSTICS'||/(?:^|_)(?:API_KEY|TOKEN|SECRET|PASSWORD)$/.test(name))delete env[name];
+ for(const name of Object.keys(env))if(name==='HUIKAN_HARNESS_APP'||name==='ELECTRON_RUN_AS_NODE'||name==='NODE_OPTIONS'||name==='MENGCANG_RECALL_NATIVE_UI'||name==='MENGCANG_RECALL_DIAGNOSTICS'||/(?:^|_)(?:API_KEY|TOKEN|SECRET|PASSWORD)$/.test(name))delete env[name];
  const owned=new Set();let harness,huikan,result,stage='initialization',lastStatus='';
  const setStage=value=>{stage=value;console.log(JSON.stringify({event:'stage',stage}));};
  const safeWord=value=>typeof value==='string'&&/^[A-Za-z0-9.-]{1,80}$/.test(value)?value:null;
@@ -120,6 +120,11 @@ async function main(){
   const original=JSON.parse(await fs.readFile(manifestFile,'utf8'));assert.ok(Array.isArray(original.dsh?.profile?.bundles));
   setStage('initial Harness normal shutdown');await gracefulStop(harness);harness=null;
   const checked=await inspectHarness(harnessExe,{platform:'win32',env});assert.equal(checked?.supported,true);assert.equal(checked.running,false);
+  setStage('unselected registry discovery');
+  const discovered=await detectHarness({platform:'win32',env});
+  assert.equal(discovered.installed,true,'Official Harness was not discovered without a selected path.');
+  assert.equal(discovered.supported,true);
+  assert.equal(path.normalize(discovered.path).toLowerCase(),path.dirname(harnessExe).toLowerCase(),'Automatic discovery selected a different installation.');
   const sentinel=crypto.randomUUID();original.huikanSmokeSentinel=sentinel;original.dsh.profile.huikanSmokeSentinel=sentinel;await fs.writeFile(manifestFile,JSON.stringify(original,null,2)+'\n');
   setStage('automatic plugin installation');huikan=await launch(huikanExe,'Huikan');const huikanPage=await page(huikan,url=>url.startsWith('mengcang://app/'));
   const expectedVersion=JSON.parse(await fs.readFile(path.join(__dirname,'../harness-plugin/package.json'),'utf8')).version;
@@ -148,7 +153,7 @@ async function main(){
   const stored=await rpc('mengcang','list',{instanceId:identity.instanceId,sessionId:capture.externalSource.sessionId});assert.equal(stored.items.length,1);assert.equal(stored.items[0].text,text);
   setStage('normal application shutdown');await gracefulStop(harness);harness=null;await gracefulStop(huikan);huikan=null;
   await until(async()=>{try{await rpc('sticky','connectionStatus');return false;}catch(error){return error.code==='SERVICE_UNAVAILABLE';}},15000,'Owned companion remained active after normal workbench quit.');
-  result={officialHarnessInitialized:true,validatedHarnessDetection:true,automaticPluginInstallation:true,unrelatedProfileMetadataPreserved:true,installationRetryIdempotent:true,realHarnessClientHeartbeat:true,pluginDiscoveredBridge:true,installedHostSyntheticCaptureSaved:true,captureRetryDidNotDuplicate:true,normalApplicationQuit:true,modelRequestMade:false,actualConversationUiCaptureTested:false};
+  result={officialHarnessInitialized:true,validatedHarnessDetection:true,unselectedRegistryDiscovery:true,automaticPluginInstallation:true,unrelatedProfileMetadataPreserved:true,installationRetryIdempotent:true,realHarnessClientHeartbeat:true,pluginDiscoveredBridge:true,installedHostSyntheticCaptureSaved:true,captureRetryDidNotDuplicate:true,normalApplicationQuit:true,modelRequestMade:false,actualConversationUiCaptureTested:false};
  }catch(error){throw Error(`Windows Harness integration failed during ${stage}: ${error.message}`);}
  finally{
   for(const item of [...owned].reverse())await forceCleanup(item);
