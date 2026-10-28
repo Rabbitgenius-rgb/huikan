@@ -96,10 +96,21 @@ async function listWindowsInstalls({ env = process.env, execute = run } = {}) {
           }
         }finally{if($null -ne $key){$key.Dispose()};if($null -ne $base){$base.Dispose()}}
       };
-      ConvertTo-Json -InputObject @($paths.ToArray()) -Compress
+      foreach($location in $paths){[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($location))}
     `, env, execute);
-    const values = JSON.parse(output);
-    return Array.isArray(values) ? values.filter(value => typeof value === 'string') : [];
+    // ASCII-only output avoids PowerShell's console code page and Utility module loading.
+    const lines = output.trim() ? output.trim().split(/\r?\n/) : [];
+    if (lines.length > 32) return [];
+    const values = [];
+    for (const line of lines) {
+      if (line.length > 131072 || line.length % 4 || !/^[A-Za-z0-9+/]+={0,2}$/.test(line)) return [];
+      const bytes = Buffer.from(line, 'base64');
+      if (bytes.toString('base64') !== line) return [];
+      const value = bytes.toString('utf8');
+      if (value.length >= 32768 || !Buffer.from(value, 'utf8').equals(bytes)) return [];
+      values.push(value);
+    }
+    return values;
   } catch { return []; }
 }
 

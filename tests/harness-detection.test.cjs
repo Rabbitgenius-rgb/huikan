@@ -86,11 +86,12 @@ test('Windows registry lookup is bounded, noninteractive and uses .NET; failures
     const script = Buffer.from(args.at(-1), 'base64').toString('utf16le');
     assert.match(script, /RegistryHive\]::CurrentUser/);
     assert.match(script, /Math\]::Min\(\$names.Length,2048\)/);
-    assert.doesNotMatch(script, /Import-Module|Get-ItemProperty|Get-ChildItem/);
-    return JSON.stringify(['D:\\Apps\\DeepSeek Harness']);
+    assert.doesNotMatch(script, /Import-Module|Get-ItemProperty|Get-ChildItem|ConvertTo-Json/);
+    return Buffer.from('D:\\测试 用户\\DeepSeek Harness', 'utf8').toString('base64');
   } });
-  assert.deepEqual(result, ['D:\\Apps\\DeepSeek Harness']);
+  assert.deepEqual(result, ['D:\\测试 用户\\DeepSeek Harness']);
   assert.deepEqual(await listWindowsInstalls({ execute: async () => { throw Error('Powershell unavailable'); } }), []);
+  assert.deepEqual(await listWindowsInstalls({ execute: async () => 'not base64 registry data' }), []);
 });
 
 test('process inspection safely encodes untrusted path text and never interprets failures as stopped', async () => {
