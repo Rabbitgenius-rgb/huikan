@@ -63,10 +63,11 @@ async function windowsAcl(paths, secure = false) {
   } catch { throw unsafe('本机连接'); }
 }
 async function privateDirectory(directory) {
-  await fs.mkdir(directory,{recursive:true,mode:0o700});
+  const created=await fs.mkdir(directory,{recursive:true,mode:0o700});
   const stat=await fs.lstat(directory); assertPrivateStat(stat,'本机桥接目录');
   if(!stat.isDirectory())throw unsafe('本机桥接目录');
-  await windowsAcl([directory],true);
+  // Do not rewrite permissions on an arbitrary existing configured directory.
+  await windowsAcl([directory],Boolean(created));
 }
 async function readPrivateJson(file,maxSize=8192) {
   const before=await fs.lstat(file); assertPrivateStat(before,'本机桥接文件');
