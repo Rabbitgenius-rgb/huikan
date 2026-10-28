@@ -124,7 +124,7 @@ async function main(){
   const discovered=await detectHarness({platform:'win32',env});
   assert.equal(discovered.installed,true,'Official Harness was not discovered without a selected path.');
   assert.equal(discovered.supported,true);
-  assert.equal(path.normalize(discovered.path).toLowerCase(),path.dirname(harnessExe).toLowerCase(),'Automatic discovery selected a different installation.');
+  assert.equal(path.resolve(discovered.path).toLowerCase(),path.resolve(path.dirname(harnessExe)).toLowerCase(),'Automatic discovery selected a different installation.');
   const sentinel=crypto.randomUUID();original.huikanSmokeSentinel=sentinel;original.dsh.profile.huikanSmokeSentinel=sentinel;await fs.writeFile(manifestFile,JSON.stringify(original,null,2)+'\n');
   setStage('automatic plugin installation');huikan=await launch(huikanExe,'Huikan');const huikanPage=await page(huikan,url=>url.startsWith('mengcang://app/'));
   const expectedVersion=JSON.parse(await fs.readFile(path.join(__dirname,'../harness-plugin/package.json'),'utf8')).version;

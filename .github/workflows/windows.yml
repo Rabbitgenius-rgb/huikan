@@ -34,8 +34,7 @@ jobs:
           "HUIKAN_HARNESS_EXE=$destination/DeepSeek Harness.exe" >> $env:GITHUB_ENV
       - name: Verify official installation discovery
         shell: pwsh
-        run: |
-          node -e "const a=require('node:assert/strict'),p=require('node:path');require('./desktop/harness-detection.cjs').detectHarness().then(h=>{a.equal(h.supported,true,'Official Harness must be discovered without a selected path');a.equal(p.resolve(h.path).toLowerCase(),p.dirname(process.env.HUIKAN_HARNESS_EXE).toLowerCase());console.log('Official Harness discovered from Windows installation records');}).catch(e=>{console.error(e.message);process.exitCode=1;})"
+        run: node scripts/check-windows-harness.cjs
       - run: npm ci
       - run: npm --prefix ui ci
       - run: npm test
