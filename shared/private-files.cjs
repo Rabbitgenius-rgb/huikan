@@ -27,23 +27,23 @@ async function windowsAcl(paths, secure = false) {
     $paths=ConvertFrom-Json $env:HUIKAN_PRIVATE_PATHS;
     foreach($p in $paths) {
       $stage='file';
-      $item=Get-Item -LiteralPath $p -Force;
+      $item=if([IO.Directory]::Exists($p)){[IO.DirectoryInfo]::new($p)}else{[IO.FileInfo]::new($p)};
       if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'unsafe'};
-      $stage='read-acl'; $acl=Get-Acl -LiteralPath $p;
+      $stage='read-acl'; $acl=$item.GetAccessControl();
       $stage='owner';
       $owner=$acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value;
       $allowed=@($sid.Value,'S-1-5-18','S-1-5-32-544');
       if($allowed -notcontains $owner){throw 'owner'};
       if($env:HUIKAN_PRIVATE_SECURE -eq '1') {
         $stage='directory';
-        if(-not $item.PSIsContainer){throw 'directory'};
+        if($item -isnot [IO.DirectoryInfo]){throw 'directory'};
         $stage='create-acl'; $acl=[System.Security.AccessControl.DirectorySecurity]::new();
         $acl.SetOwner($sid); $acl.SetAccessRuleProtection($true,$false);
         $stage='create-rule';
         $rule=[System.Security.AccessControl.FileSystemAccessRule]::new($sid,[System.Security.AccessControl.FileSystemRights]::FullControl,[System.Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit',[System.Security.AccessControl.PropagationFlags]::None,[System.Security.AccessControl.AccessControlType]::Allow);
-        $acl.AddAccessRule($rule); $stage='write-acl'; Set-Acl -LiteralPath $p -AclObject $acl;
+        $acl.AddAccessRule($rule); $stage='write-acl'; $item.SetAccessControl($acl);
         $stage='read-acl';
-        $acl=Get-Acl -LiteralPath $p;
+        $acl=$item.GetAccessControl();
       };
       $stage='permissions';
       if($acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]).Count -eq 0){throw 'permissions'};
