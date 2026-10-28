@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen, globalShortcut, nativeTheme, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen, globalShortcut, nativeTheme, shell, dialog } = require('electron');
 const path = require('path');
 const os = require('os');
 const { createRecallService } = require('./recall-service.cjs');
@@ -26,10 +26,12 @@ const stickies = require('./stickies');
 const { stickyItem } = require('./sticky-title.cjs');
 const panelPreview = require('./panel-preview');
 const { createTopicOrganizer } = require('./topic-organizer.cjs');
+const { topicPresentation, createTopicOrganizationRequest } = require('./topic-presentation.cjs');
 const { nativeState, launchNativeFrontend } = require('./native-frontend.cjs');
 const configuredNative = process.env.MENGCANG_RECALL_NATIVE_UI || candidateConfig.nativeUIPath;
 const nativeUIPath = configuredNative ? (path.isAbsolute(configuredNative) ? configuredNative : path.join(process.resourcesPath, configuredNative)) : null;
-let nativeFrontend, topicOrganizer, appearance;
+let nativeFrontend, topicOrganizer, appearance, topicPreviewController;
+let lastPayload = '', topicDialogOpen = false;
 
 const PANEL_W = 320;
 const PANEL_H = 400;
@@ -76,8 +78,13 @@ function createPanel() {
   win.loadFile(path.join(__dirname, 'panel', 'index.html'));
   // Hide on blur, except while a tear-off drag is in progress.
   win.on('blur', () => {
-    if (!state.tearing && !win.webContents.isDevToolsOpened()) { diagnostics.record('panel.blur.hide', win); win.hide(); }
-    else diagnostics.record('panel.blur.keep', win);
+    // Native focus moves between the home and topic windows in two events.
+    // Let the receiving window become focused before deciding to dismiss both.
+    setImmediate(() => {
+      if (win.isDestroyed() || win.isFocused()) return;
+      if (!state.tearing && !topicDialogOpen && !topicPreviewController?.hasFocus?.() && !win.webContents.isDevToolsOpened()) { diagnostics.record('panel.blur.hide', win); win.hide(); }
+      else diagnostics.record('panel.blur.keep', win);
+    });
   });
   return win;
 }
@@ -140,10 +147,18 @@ function protectWindow(win) {
 }
 function trustedApp(event) {
   const wc = event.sender;
-  return trusted(event, wc) && (wc === state.panel?.webContents || state.byWc.has(wc.id));
+  return trusted(event, wc) && (wc === state.panel?.webContents || state.byWc.has(wc.id) || topicPreviewController?.ownsWebContents?.(wc));
+}
+function trustedPanelSender(event, id) {
+  const wc = event.sender;
+  if (!trusted(event, wc)) return false;
+  if (wc === state.panel?.webContents) return id === undefined || (typeof id === 'string' && state.items.some(item => item.id === id));
+  if (id === undefined) return Boolean(topicPreviewController?.ownsWebContents?.(wc));
+  return typeof id === 'string' && Boolean(topicPreviewController?.ownsItem?.(wc, id));
 }
 function payload() {
-  return { conversation: state.conversation, items: state.items, pinned: pinnedIds(), settings: settings.current(), mode: state.mode, inputDiagnostics: diagnosticEnabled, ...state.snapshot };
+  const snapshot = state.snapshot || state.service.snapshot();
+  return { conversation: state.conversation, items: state.items, pinned: pinnedIds(), settings: settings.current(), mode: state.mode, inputDiagnostics: diagnosticEnabled, ...snapshot, ...topicPresentation(snapshot, topicOrganizer?.snapshot()) };
 }
 function safeReply(fn) {
   return async (...args) => { try { return { ok: true, data: await fn(...args) }; } catch (e) { return { ok: false, error: { code: e.code || 'REQUEST_FAILED', message: String(e.message || '操作未完成').slice(0, 500) } }; } };
@@ -152,6 +167,12 @@ function publishNative() {
   if (topicOrganizer && state.service) {
     const value = {...nativeState(state.service.snapshot(), topicOrganizer.snapshot()), appearance:appearance?.get()};
     nativeFrontend?.update(value);
+    const nextPayload = payload(), next = JSON.stringify(nextPayload);
+    if (next !== lastPayload) {
+      lastPayload = next;
+      state.panel?.webContents.send('data:changed', nextPayload);
+      topicPreviewController?.refresh?.();
+    }
     stickies.syncItems();
   }
 }
@@ -200,22 +221,15 @@ if (primary) app.whenReady().then(async () => {
   settings.setAppearanceProvider(()=>appearance.get());
   state.service = await createRecallService({ userData, callDream: (method, params) => callPrivate({ directory: bridgeDirectory, service: 'mengcang', method, params, timeoutMs: 15000 }), onContext: diagnostics.context });
   state.mode = state.service.snapshot().mode;
-  if (nativeUIPath) topicOrganizer = await createTopicOrganizer({ userData,
+  topicOrganizer = await createTopicOrganizer({ userData, automatic: Boolean(nativeUIPath),
     generate: request => callPrivate({ directory: bridgeDirectory, service: 'harness-topics', method: 'generate', params: request, timeoutMs: 65000 }),
     onChange: publishNative,
   });
-  let lastPayload = '';
   const update = snap => {
     state.snapshot = snap;
     state.items = snap.items;
     state.conversation = { title: snap.active?.sessionTitle || (snap.active?.sessionId ? '未命名对话' : '等待 Harness 对话'), turns: 0, outline: [] };
-    if (topicOrganizer) { topicOrganizer.update(snap); publishNative(); }
-    const next = JSON.stringify(payload());
-    if (next !== lastPayload) {
-      lastPayload = next;
-      state.panel?.webContents.send('data:changed', payload());
-    }
-    stickies.syncItems();
+    topicOrganizer.update(snap); publishNative();
   };
   state.service.events.on('change', update);
   update(state.service.snapshot());
@@ -228,8 +242,28 @@ if (primary) app.whenReady().then(async () => {
   }
   state.panel = createPanel();
   app.on('activate', showPanel);
-  panelPreview.attach(state.panel, ipcMain);
+  topicPreviewController = panelPreview.attach(state.panel, ipcMain, { getData: payload });
   ipcMain.handle('data:get', event => trustedApp(event) ? payload() : null);
+  const requestTopicOrganization = createTopicOrganizationRequest({
+    getSnapshot: () => state.service.snapshot(),
+    organize: () => topicOrganizer.retry(),
+    confirm: async () => {
+      topicDialogOpen = true;
+      try {
+        const { response } = await dialog.showMessageBox(state.panel, {
+          type: 'question', title: '使用 Harness 模型整理主题',
+          message: '将当前已保存的摘录发送给 Harness 中配置的模型服务？',
+          detail: '仅发送当前对话中尚未自定主题的摘录。手动主题和保存的原文不会改变。',
+          buttons: ['整理主题', '取消'], defaultId: 1, cancelId: 1, noLink: true,
+        });
+        return response === 0;
+      } finally { topicDialogOpen = false; }
+    },
+  });
+  ipcMain.handle('topics:organize', safeReply((event, sourceKey) => {
+    if (!trusted(event, state.panel.webContents)) throw Error('此窗口不能整理主题');
+    return requestTopicOrganization(sourceKey);
+  }));
   if (diagnosticEnabled) ipcMain.on('diagnostic:input', (event, value) => { if (trusted(event, state.panel.webContents)) diagnostics.input(state.panel, value); });
   ipcMain.on('mode:set', (event, mode) => { if (trustedApp(event)) settings.setMode(mode); });
   ipcMain.handle('recall:retry', safeReply((event, id) => {
@@ -241,11 +275,13 @@ if (primary) app.whenReady().then(async () => {
     return state.service.refresh();
   }));
   ipcMain.handle('recall:reveal', safeReply((event, id) => {
-    if (!trustedApp(event) || (event.sender !== state.panel.webContents && state.byWc.get(event.sender.id)?.id !== id)) throw Error('此窗口不能定位该条目');
+    const ownSticky = trusted(event, event.sender) && state.byWc.get(event.sender.id)?.id === id;
+    if (typeof id !== 'string' || (!trustedPanelSender(event, id) && !ownSticky)) throw Error('此窗口不能定位该条目');
     return revealItem(id);
   }));
   ipcMain.handle('review:set', safeReply((event, id, due) => {
-    if (!trustedApp(event) || (event.sender !== state.panel.webContents && state.byWc.get(event.sender.id)?.id !== id)) throw Error('此窗口不能更改该条目');
+    const ownSticky = trusted(event, event.sender) && state.byWc.get(event.sender.id)?.id === id;
+    if (typeof id !== 'string' || (!(trustedPanelSender(event, id) && event.sender === state.panel.webContents) && !ownSticky)) throw Error('此窗口不能更改该条目');
     return state.service.setReview(id, due);
   }));
   ipcMain.handle('link:open', safeReply(async (event, value) => {
@@ -254,7 +290,7 @@ if (primary) app.whenReady().then(async () => {
     if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw Error('仅支持安全网页链接');
     await shell.openExternal(url.href); return true;
   }));
-  stickies.wire(ipcMain, { protectWindow, decorateItem: (item, previous) => stickyItem(item, topicOrganizer?.snapshot().topics || [], previous) });
+  stickies.wire(ipcMain, { protectWindow, isPanelSender: trustedPanelSender, decorateItem: (item, previous) => stickyItem(item, topicOrganizer?.snapshot().topics || [], previous) });
   await state.service.refresh();
   await stickies.restore();
   settings.start();

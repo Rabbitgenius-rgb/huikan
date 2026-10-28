@@ -17,10 +17,11 @@ contextBridge.exposeInMainWorld('api', {
   onDataChange: cb => on('data:changed', cb),
   retryCapture: id => ipcRenderer.invoke('recall:retry', id),
   refresh: () => ipcRenderer.invoke('recall:refresh'),
+  organizeTopics: sourceKey => ipcRenderer.invoke('topics:organize', sourceKey),
   reveal: id => ipcRenderer.invoke('recall:reveal', id),
   openLink: url => ipcRenderer.invoke('link:open', url),
 
-  // Read-only excerpt beside the panel; never takes focus from a drag.
+  // Interactive topic details beside the panel.
   previewShow: (kind, id, row) => ipcRenderer.send('preview:show', kind, id, row),
   previewHide: () => ipcRenderer.send('preview:hide'),
   onPreview: (cb) => on('preview:content', cb),

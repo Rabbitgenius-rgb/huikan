@@ -6,7 +6,7 @@ const source=s=>s.active?.instanceId&&s.active?.sessionId?{instanceId:s.active.i
 const identity=s=>source(s)?hash(source(s)):'';
 const digest=s=>hash(s.items.map(x=>({id:x.id,title:x.title,text:x.text})).sort((a,b)=>a.id.localeCompare(b.id)));
 const automatic=s=>({...s,items:s.items.filter(x=>!x.manualTopic)});
-async function createTopicOrganizer({userData,generate,onChange=()=>{}}){
+async function createTopicOrganizer({userData,generate,onChange=()=>{},automatic:autoGenerate=true}){
  const file=path.join(userData,'recall-topics-v1.json');let cache={version:1,entries:{}},current=null,state={status:'idle',topics:[],error:null},closed=false,writes=Promise.resolve();const active=new Map(),failed=new Set(),latest=new Map();
  try{const d=JSON.parse(await fs.readFile(file,'utf8'));if(d.version===1&&d.entries&&typeof d.entries==='object')cache=d;}catch(e){if(e.code!=='ENOENT'){state.error='主题缓存暂不可用，原文仍保留';}}
  function changed(){if(!closed)onChange();}
@@ -14,7 +14,7 @@ async function createTopicOrganizer({userData,generate,onChange=()=>{}}){
  function view(snapshot){
   const ai=automatic(snapshot),ids=new Set(ai.items.map(x=>x.id)),entry=cache.entries[identity(snapshot)];
   let topics=[];
-  if(entry?.topics){const seen=new Set();for(const topic of entry.topics){const itemIds=topic.itemIds.filter(id=>ids.has(id)&&!seen.has(id));itemIds.forEach(id=>seen.add(id));if(itemIds.length)topics.push({...topic,itemIds});}}
+  if(Array.isArray(entry?.topics)){const seen=new Set();for(const topic of entry.topics){if(!topic||typeof topic.id!=='string'||typeof topic.title!=='string'||!Array.isArray(topic.itemIds))continue;const itemIds=topic.itemIds.filter(id=>ids.has(id)&&!seen.has(id));itemIds.forEach(id=>seen.add(id));if(itemIds.length)topics.push({...topic,itemIds});}}
   const assigned=new Set(topics.flatMap(x=>x.itemIds)),remaining=ai.items.filter(x=>!assigned.has(x.id)).map(x=>x.id);
   if(remaining.length)topics.push({id:'unclassified',title:state.status==='loading'?'正在整理主题':'待整理内容',brief:state.error||'已保存的原文可直接查看',symbol:'doc.text',itemIds:remaining});
   const manual=new Map();
@@ -37,6 +37,9 @@ async function createTopicOrganizer({userData,generate,onChange=()=>{}}){
   if(!force&&stored?.digest===inputDigest){try{contract.validateTopics({topics:stored.topics},ai.items.map(x=>x.id));state={status:'ready',topics:stored.topics,error:null};return;}catch{}}
   if(active.has(jobKey)){state={status:'loading',topics:[],error:null};return;}
   if(!force&&failed.has(jobKey)){state={status:'error',topics:[],error:state.error||'主题暂未整理完成，可稍后重试'};return;}
+  // Public Electron windows read manual/cached topics without making a model
+  // request merely because a window opens. Explicit retry authorizes one job.
+  if(!autoGenerate&&!force){state={status:'idle',topics:[],error:null};return;}
   state={status:'loading',topics:[],error:null};failed.delete(jobKey);
   const items=ai.items.map(x=>({id:x.id,title:x.title||'',text:x.text.length>3500?x.text.slice(0,3000)+'\n…\n'+x.text.slice(-450):x.text}));
   const request={...source(snapshot),digest:inputDigest,items};

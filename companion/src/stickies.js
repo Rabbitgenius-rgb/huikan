@@ -323,6 +323,18 @@ function finishMorph(rec, token) {
 function wire(ipcMain, options = {}) {
   protectWindow = options.protectWindow || (() => {});
   decorateItem = options.decorateItem || (item => item);
+  const allowedPanel = (event, id) => (!event.senderFrame || event.senderFrame === event.sender.mainFrame) && (options.isPanelSender ? options.isPanelSender(event, id) : panelEvent(event));
+  let tearOwner = null;
+  const ownsTear = event => tearOwner && event.sender === tearOwner.sender && (!event.senderFrame || event.senderFrame === event.sender.mainFrame);
+  const releaseOwnedTear = () => { tearOwner = null; endTear(); };
+  // A source switch may hide the detail window before its mouseup can arrive.
+  const tearWatch = setInterval(() => {
+    if (!tearOwner) return;
+    if (!state.tearing) { tearOwner = null; return; }
+    if (tearOwner.sender.isDestroyed() || !allowedPanel(tearOwner.event, tearOwner.id)) releaseOwnedTear();
+  }, 150);
+  tearWatch.unref();
+  state.panel?.once('closed', () => { clearInterval(tearWatch); if (tearOwner) releaseOwnedTear(); });
   const recOf = e => (!e.senderFrame || e.senderFrame === e.sender.mainFrame) ? state.byWc.get(e.sender.id) : null;
 
   ipcMain.handle('sticky:init', (e) => {
@@ -409,10 +421,18 @@ function wire(ipcMain, options = {}) {
     else rec.win.setIgnoreMouseEvents(false);
   });
 
-  ipcMain.handle('tear:start', (event, id, x, y) => panelEvent(event) ? beginTear(id, { x, y }) : { ok: false, reason: 'forbidden' });
-  ipcMain.handle('sticky:pin', (event, id) => panelEvent(event) ? pinItem(id) : { ok: false, reason: 'forbidden' });
-  ipcMain.on('tear:move', (event, x, y) => { if (panelEvent(event)) moveTear(x, y); });
-  ipcMain.on('tear:end', event => { if (panelEvent(event)) endTear(); });
+  ipcMain.handle('tear:start', (event, id, x, y) => {
+    if (!allowedPanel(event, id) || state.tearing) return { ok: false, reason: 'forbidden' };
+    const result = beginTear(id, { x, y });
+    if (result.ok) tearOwner = { event, sender: event.sender, id };
+    return result;
+  });
+  ipcMain.handle('sticky:pin', (event, id) => allowedPanel(event, id) ? pinItem(id) : { ok: false, reason: 'forbidden' });
+  ipcMain.on('tear:move', (event, x, y) => {
+    if (!ownsTear(event)) return;
+    if (allowedPanel(event, tearOwner.id)) moveTear(x, y); else releaseOwnedTear();
+  });
+  ipcMain.on('tear:end', event => { if (ownsTear(event)) releaseOwnedTear(); });
 }
 
 function setAllHidden(hidden) {
