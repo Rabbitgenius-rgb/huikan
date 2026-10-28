@@ -53,7 +53,9 @@ test('system transparency and contrast changes affect both windows and recover',
     theme[property] = false; theme.emit('updated');
     assert.equal(win.material, 'acrylic'); assert.equal(preview.material, 'acrylic');
   }
-  win.emit('closed'); preview.emit('closed');
+  // Electron clears the BrowserWindow's webContents reference during teardown.
+  win.webContents = null; preview.webContents = null;
+  assert.doesNotThrow(() => { win.emit('closed'); preview.emit('closed'); });
   assert.equal(theme.listenerCount('updated'), 0);
   assert.equal(wc.listenerCount('did-finish-load'), 0);
 });

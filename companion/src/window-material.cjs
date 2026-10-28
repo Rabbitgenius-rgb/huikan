@@ -25,6 +25,7 @@ function createWindowMaterial({ platform = process.platform, release = os.releas
         visualEffectState: 'active', roundedCorners: true } : {}) };
   }
   function attach(win) {
+    const webContents = win.webContents;
     let current;
     const send = () => { if (!win.isDestroyed()) win.webContents.send('glass:material', current); };
     const update = () => {
@@ -45,11 +46,11 @@ function createWindowMaterial({ platform = process.platform, release = os.releas
     };
     update();
     // Deliver after the renderer has subscribed, including after a reload.
-    win.webContents.on('did-finish-load', send);
+    webContents.on('did-finish-load', send);
     nativeTheme.on('updated', update);
     win.once('closed', () => {
       nativeTheme.off('updated', update);
-      win.webContents.off('did-finish-load', send);
+      webContents.off('did-finish-load', send);
       windows.delete(win);
     });
   }

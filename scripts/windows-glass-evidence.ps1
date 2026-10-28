@@ -16,6 +16,9 @@ public static class HuikanGlassEvidence {
 '@
 [void][HuikanGlassEvidence]::SetProcessDpiAwarenessContext([IntPtr](-4))
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
+$remoteSession = [System.Windows.Forms.SystemInformation]::TerminalServerSession
+$productName = (Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name ProductName).ProductName
 $composition = $false
 $compositionResult = [HuikanGlassEvidence]::DwmIsCompositionEnabled([ref]$composition)
 $windows = @()
@@ -36,4 +39,4 @@ try {
   $graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size, [System.Drawing.CopyPixelOperation]::SourceCopy)
   $bitmap.Save($request.screenshot, [System.Drawing.Imaging.ImageFormat]::Png)
 } finally { $graphics.Dispose(); $bitmap.Dispose() }
-@{ build = [Environment]::OSVersion.Version.Build; compositionEnabled = $composition; compositionHresult = $compositionResult; windows = $windows; screenshotWidth = $width; screenshotHeight = $height } | ConvertTo-Json -Depth 6 -Compress | Set-Content -LiteralPath $request.result -Encoding UTF8
+@{ build = [Environment]::OSVersion.Version.Build; productName = $productName; remoteSession = $remoteSession; compositionEnabled = $composition; compositionHresult = $compositionResult; windows = $windows; screenshotWidth = $width; screenshotHeight = $height } | ConvertTo-Json -Depth 6 -Compress | Set-Content -LiteralPath $request.result -Encoding UTF8

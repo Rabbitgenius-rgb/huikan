@@ -48,7 +48,15 @@ async function connect(port) {
       });
       if (value.exceptionDetails) throw Error(`Owned companion evaluation failed: ${value.exceptionDetails.exception?.description || value.exceptionDetails.text}`);
       return value.result?.value;
-    }, close() { socket.close(); },
+    },
+    async close() {
+      if (socket.readyState === WebSocket.CLOSED) return;
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(Error('Owned inspector did not finish disconnecting.')), 5000);
+        socket.addEventListener('close', () => { clearTimeout(timer); resolve(); }, {once:true});
+        socket.close();
+      });
+    },
   };
 }
 // Each expression runs within this owned installed application's actual main process.
@@ -72,7 +80,8 @@ async function main() {
   const env = {...process.env, MENGCANG_RECALL_USER_DATA:userData, MENGCANG_RECALL_BRIDGE_DIR:directory, HUIKAN_DISCOVERY_FILE:path.join(base, 'discovery.json')};
   for (const name of Object.keys(env)) if (['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'MENGCANG_RECALL_NATIVE_UI', 'MENGCANG_RECALL_DIAGNOSTICS'].includes(name) || /(?:^|_)(?:API_KEY|TOKEN|SECRET|PASSWORD)$/.test(name)) delete env[name];
   let child, inspector, heartbeat, result, backdropHandle, evidenceWindows = [];
-  const checkpoints = [];
+  const checkpoints = [], shutdown = [], publishing = new Set();
+  let stderr = '';
   const watchdog = setTimeout(() => { if (child?.pid && !exited(child)) child.kill('SIGKILL'); console.error('Native glass verification exceeded its deadline.'); process.exit(1); }, 180000); watchdog.unref();
   async function capture(name, windows, backdrop) {
     const resultFile = path.join(base, `${name}.json`), input = path.join(base, `${name}-input.json`);
@@ -95,7 +104,21 @@ async function main() {
   }
   try {
     const port = await freePort();
-    child = spawn(executable, ['--huikan-companion', `--inspect=127.0.0.1:${port}`], {env, stdio:'ignore', windowsHide:false});
+    child = spawn(executable, ['--huikan-companion', `--inspect=127.0.0.1:${port}`], {env, stdio:['ignore','ignore','pipe'], windowsHide:false});
+    // Keep only bounded lifecycle markers and known error categories. Never
+    // retain arbitrary renderer output, debugger URLs, or profile contents.
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', chunk => {
+      stderr = (stderr + chunk).slice(-8192);
+      const lines = stderr.split(/\r?\n/); stderr = lines.pop();
+      for (const line of lines) {
+        if (line.startsWith('HUIKAN_GLASS_SHUTDOWN ')) { try { shutdown.push(JSON.parse(line.slice(22))); } catch {} }
+        else if (line.includes('Waiting for the debugger to disconnect')) shutdown.push({event:'waiting-for-debugger-disconnect'});
+        else if (line.startsWith('Recall state not saved:')) shutdown.push({event:'app-save-failed',code:line.slice(23).trim().replace(/[^A-Z0-9_-]/g,'').slice(0,64)});
+        else if (/Uncaught Exception|UnhandledPromiseRejection|Object has been destroyed/.test(line)) shutdown.push({event:'app-exception',category:line.includes('Object has been destroyed')?'destroyed-object':'unhandled-error'});
+        if (shutdown.length > 30) shutdown.shift();
+      }
+    });
     let launchError; child.on('error', error => { launchError = error; });
     inspector = await connect(port);
     await until(async () => {
@@ -104,7 +127,10 @@ async function main() {
       try { return (await callPrivate({directory, service:'sticky', method:'connectionStatus', timeoutMs:1000})).protocol === 1; } catch { return false; }
     }, 30000, 'Installed companion did not initialize.');
     let contextSeq = 0;
-    const publish = () => callPrivate({directory, service:'sticky', method:'publishContext', params:{viewId:'glass-view', instanceId, sessionId, sessionTitle:'Windows 原生材质 · 合成示例', focused:true, supported:true, version:'0.2.1-rc.3', contextSeq:++contextSeq, focusEpoch:1}});
+    const publish = () => {
+      const task = callPrivate({directory, service:'sticky', method:'publishContext', params:{viewId:'glass-view', instanceId, sessionId, sessionTitle:'Windows 原生材质 · 合成示例', focused:true, supported:true, version:'0.2.1-rc.3', contextSeq:++contextSeq, focusEpoch:1}});
+      publishing.add(task); task.finally(() => publishing.delete(task)).catch(()=>{}); return task;
+    };
     await publish(); heartbeat = setInterval(() => { void publish().catch(() => {}); }, 3000); heartbeat.unref();
     await until(() => inspector.evaluate(expression("return state.items.length===3 && state.panel && !state.panel.webContents.isLoading();")), 15000, 'Synthetic panel content did not render.');
     const background = await inspector.evaluate(expression(`
@@ -173,18 +199,30 @@ async function main() {
       } else if (native.windows[i].hresult === 0) assert.notEqual(native.windows[i].systemBackdropType, 3);
     }
     result = {installedCompanion:true,platform:'win32',build:state.build,panelAndPreviewRendered:true,hoverOpenedPreview:true,nativeHideAndReopenPassed:true,
-      nativeAcrylicVerified:acrylicExpected,solidFallbackVerified:!acrylicExpected,compositedDesktopCaptured:true,
+      nativeAcrylicConfigured:acrylicExpected,solidFallbackVerified:!acrylicExpected,compositedDesktopCaptured:true,
       syntheticDataOnly:true,pixelAppearanceRequiresVisualReview:true,native,windows:state.windows.map(({text,...value})=>value)};
     await fs.writeFile(path.join(output, 'result.json'), JSON.stringify(result, null, 2)+'\n');
-    await inspector.evaluate(expression('app.quit();return true;')).catch(()=>{}); inspector.close(); inspector=null;
-    await until(() => exited(child), 15000, 'Owned companion did not quit normally.');
-    console.log(JSON.stringify({nativeAcrylicVerified:acrylicExpected,solidFallbackVerified:!acrylicExpected,panelAndPreviewRendered:true,hoverOpenedPreview:true,nativeHideAndReopenPassed:true,compositedDesktopCaptured:true,syntheticDataOnly:true}));
+    // Stop the test-only host before asking the real app to drain and quit.
+    clearInterval(heartbeat); heartbeat = null;
+    await Promise.allSettled([...publishing]);
+    await inspector.evaluate(expression(`
+      const report=event=>process.stderr.write('HUIKAN_GLASS_SHUTDOWN '+JSON.stringify({event,quitting:state.quitting,windows:BrowserWindow.getAllWindows().length})+'\\n');
+      for(const event of ['before-quit','will-quit','quit','window-all-closed'])app.on(event,()=>report(event));
+      report('quit-requested');app.quit();return true;
+    `)).catch(()=>{});
+    await inspector.close(); inspector=null;
+    shutdown.push({event:'inspector-disconnected'});
+    await until(() => exited(child), 45000, 'Owned companion did not quit normally.');
+    result.normalApplicationQuit = true;
+    await fs.writeFile(path.join(output, 'result.json'), JSON.stringify(result, null, 2)+'\n');
+    console.log(JSON.stringify({nativeAcrylicConfigured:acrylicExpected,solidFallbackVerified:!acrylicExpected,panelAndPreviewRendered:true,hoverOpenedPreview:true,nativeHideAndReopenPassed:true,normalApplicationQuit:true,compositedDesktopCaptured:true,syntheticDataOnly:true}));
   } catch (error) {
     if (inspector) await checkpoint('failed').catch(()=>{});
     if (backdropHandle) await capture('failed-native-glass', evidenceWindows, backdropHandle).catch(()=>{});
     throw error;
   } finally {
-    clearInterval(heartbeat); clearTimeout(watchdog); inspector?.close();
+    clearInterval(heartbeat); clearTimeout(watchdog); await inspector?.close().catch(()=>{});
+    if (shutdown.length) await fs.writeFile(path.join(output, 'shutdown.json'), JSON.stringify(shutdown, null, 2)+'\n');
     if (child?.pid && !exited(child)) await runFile('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {windowsHide:true, timeout:15000}).catch(()=>{});
     await fixture.close();
     if (!child || exited(child)) await fs.rm(base, {recursive:true, force:true, maxRetries:5, retryDelay:300});
