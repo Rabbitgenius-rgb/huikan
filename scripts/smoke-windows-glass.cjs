@@ -159,6 +159,15 @@ async function main() {
     const topicWindow = "BrowserWindow.getAllWindows().find(w=>['/panel/preview.html','/panel/topic.html'].some(suffix=>w.webContents.getURL().endsWith(suffix)))";
     const mainJS = script => inspector.evaluate(expression(`return state.panel.webContents.executeJavaScript(${JSON.stringify(script)});`));
     const detailJS = script => inspector.evaluate(expression(`const win=${topicWindow};if(!win)throw Error('Topic detail window missing');return win.webContents.executeJavaScript(${JSON.stringify(script)});`));
+    async function moveDesktopCursor(local) {
+      assert.ok(Number.isInteger(local.x) && Number.isInteger(local.y));
+      // Chromium injection alone leaves the OS cursor elsewhere. Move it only
+      // over this fixture so the actual native hover lifecycle is exercised.
+      const point = await inspector.evaluate(expression(`const bounds=state.panel.getContentBounds();return screen.dipToScreenPoint({x:bounds.x+${local.x},y:bounds.y+${local.y}});`));
+      assert.ok(Number.isInteger(point.x) && Number.isInteger(point.y));
+      const command = `Add-Type -Namespace HuikanFixture -Name Cursor -MemberDefinition '[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);'; if (-not [HuikanFixture.Cursor]::SetCursorPos(${point.x}, ${point.y})) { throw 'Fixture cursor could not move.' }`;
+      await runFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], {windowsHide:true, timeout:15000, maxBuffer:64*1024});
+    }
     const data = await mainJS('window.api.getData()');
     assert.equal(data.topics.length, 2, 'Saved manual topics were not reused.');
     const materialTopic = data.topics.find(topic => topic.title === '桌面材质');
@@ -172,6 +181,7 @@ async function main() {
     await mainJS('window.__huikanTopicMouse={count:0,topic:null};window.addEventListener("mousemove",e=>{window.__huikanTopicMouse={count:window.__huikanTopicMouse.count+1,topic:e.target.closest?.(".topic-row")?.textContent||null};});true;');
     async function moveOffHome() {
       await mainJS('window.__huikanTopicMouse={count:0,topic:null}');
+      await moveDesktopCursor({x:8,y:8});
       await inspector.evaluate(expression('state.panel.webContents.sendInputEvent({type:"mouseMove",x:8,y:8});return true;'));
       await until(() => mainJS('window.__huikanTopicMouse.count>0 && window.__huikanTopicMouse.topic===null && document.querySelector(".topic-row:hover")===null'), 5000, 'Renderer did not acknowledge leaving the topic row.');
     }
@@ -182,6 +192,7 @@ async function main() {
     }
     async function hoverTopic() {
       const row = await topicRow();
+      await moveDesktopCursor(row);
       await inspector.evaluate(expression(`state.panel.webContents.sendInputEvent({type:'mouseMove',x:${row.x},y:${row.y}});return true;`));
       return until(() => inspector.evaluate(expression(`const win=${topicWindow};return win?.isVisible()?{name:'topic',handle:hwnd(win)}:null;`)), 10000, 'Real hover did not open the topic detail.');
     }
