@@ -22,11 +22,13 @@
 
 ## 下载安装
 
-[**下载 Windows 10/11 64 位安装程序（0.2.2）**](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.2.2/Huikan-0.2.2-windows-x64-setup.exe) · [Windows 发行说明](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.2.2)
+[**下载 Windows 10/11 64 位安装程序（0.2.3）**](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.2.3/Huikan-0.2.3-windows-x64-setup.exe) · [Windows 发行说明](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.2.3)
 
 双击安装程序，按向导安装后打开“回看”。无需另装 Node.js；工作台和浮窗一起安装。Windows 安装包未做代码签名，首次运行可能显示“未知发布者”或 SmartScreen 提示；请核对下载来源为本项目的 GitHub 发行页。组织策略禁止运行未签名程序时，需要管理员按其策略处理。
 
-Windows 0.2.2 已在 GitHub Windows Server 2025 构建环境实际安装：工作台与浮窗启动、中文资料路径、示例原文保存、重复请求去重和重启恢复均通过。使用官方 Harness 0.2.1-rc.3 的额外联调也通过了安装记录自动发现、插件自动安装、重复检测不重复安装、真实客户端心跳及正常退出。摘录测试通过真实宿主插件接口发送合成内容，尚未覆盖真实对话界面的选中文字操作及全部来源回跳。
+Windows 0.2.3 已在 GitHub Windows Server 2025 构建环境实际安装：工作台与浮窗启动、中文资料路径、示例原文保存、重复请求去重和重启恢复均通过。使用官方 Harness 0.2.1-rc.3 的额外联调也通过了安装记录自动发现、插件自动安装、重复检测不重复安装、真实客户端心跳及正常退出。摘录测试通过真实宿主插件接口发送合成内容，尚未覆盖真实对话界面的选中文字操作及全部来源回跳。
+
+0.2.3 的额外原生窗口检查通过了主面板与原文预览的 Acrylic 系统属性读回、悬停、隐藏重开和正常退出。该 Server 环境的实际桌面截图呈现实色，因此不能将它作为普通 Windows 11 电脑最终模糊质感的验收；系统材质会受透明度设置、系统版本和运行环境影响。[构建与安装检查](https://github.com/Rabbitgenius-rgb/huikan/actions/runs/40646005699)。
 
 Windows 版内置回看插件，启动时自动识别支持的官方 Harness。已初始化且完全退出的宿主会自动安装插件；安装后打开 Harness 即可连接。无需手动导入 `.tgz`，也无需额外安装 Node.js。首次安装可能需要联网下载宿主插件依赖。
 
