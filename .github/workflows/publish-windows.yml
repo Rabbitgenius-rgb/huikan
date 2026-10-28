@@ -1,0 +1,72 @@
+name: Publish verified Windows preview
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Successful Build Windows run ID
+        required: true
+        type: string
+      tag:
+        description: Existing draft release tag (for example v0.2.2)
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      BUILD_RUN_ID: ${{ inputs.build_run_id }}
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - name: Publish the exact verified installer
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, re, subprocess, tarfile
+          repo, run_id, tag = os.environ['GH_REPO'], os.environ['BUILD_RUN_ID'], os.environ['RELEASE_TAG']
+          assert re.fullmatch(r'[0-9]+', run_id), 'Invalid build run ID'
+          assert re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', tag), 'Invalid release tag'
+          def gh(*args):
+              return subprocess.check_output(['gh', *args], text=True)
+          run = json.loads(gh('api', f'repos/{repo}/actions/runs/{run_id}'))
+          assert run['conclusion'] == 'success' and run['status'] == 'completed', 'Build has not passed'
+          assert run['head_branch'] == 'main' and run['event'] == 'workflow_dispatch', 'Unexpected build source'
+          assert run['path'] == '.github/workflows/windows.yml', 'Unexpected build workflow'
+          assert run['head_repository']['full_name'] == repo, 'Unexpected source repository'
+          def release():
+              return json.loads(gh('release', 'view', tag, '--json', 'tagName,isDraft,targetCommitish,assets'))
+          draft = release()
+          assert draft['tagName'] == tag and draft['isDraft'], 'An existing draft is required'
+          assert draft['targetCommitish'] == run['head_sha'], 'Release and verified build revisions differ'
+          subprocess.run(['gh', 'run', 'download', run_id, '--name', 'huikan-windows-x64', '--dir', 'download'], check=True)
+          version = tag[1:]
+          names = [f'mengcang-harness-recall-{version}.tgz', f'Huikan-{version}-windows-x64-setup.exe']
+          folder = pathlib.Path('download')
+          assert {p.name for p in folder.iterdir()} == set(names), 'Unexpected release files'
+          with tarfile.open(folder / names[0], 'r:gz') as archive:
+              manifest = json.load(archive.extractfile('package/package.json'))
+          assert manifest['name'] == '@mengcang/harness-recall' and manifest['version'] == version, 'Plugin version differs'
+          with (folder / names[1]).open('rb') as binary:
+              assert binary.read(2) == b'MZ', 'Installer is not a Windows executable'
+          for name in names:
+              existing = next((a for a in release()['assets'] if a['name'] == name), None)
+              if existing:
+                  assert existing['state'] == 'uploaded' and existing['size'] == (folder / name).stat().st_size, 'Existing asset differs'
+              else:
+                  subprocess.run(['gh', 'release', 'upload', tag, str(folder / name)], check=True)
+          complete = release()
+          assert complete['isDraft'] and complete['targetCommitish'] == run['head_sha'], 'Draft changed during upload'
+          assets = {a['name']: a for a in complete['assets']}
+          assert set(assets) == set(names), 'Unexpected release assets'
+          for name in names:
+              assert assets[name]['state'] == 'uploaded' and assets[name]['size'] == (folder / name).stat().st_size
+          subprocess.run(['gh', 'release', 'edit', tag, '--draft=false', '--prerelease', '--latest=false'], check=True)
+          print(f'Published https://github.com/{repo}/releases/tag/{tag} from verified build {run_id}')
+          PY
