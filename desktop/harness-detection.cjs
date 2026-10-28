@@ -108,7 +108,7 @@ async function inspectHarness(appPath, {
   readRunning: inspectRunning = readRunning,
 } = {}) {
   if (typeof appPath !== 'string' || appPath.includes('\0')) return null;
-  const paths = platform === 'win32' ? path.win32 : path;
+  const paths = platform === 'win32' ? path.win32 : path.posix;
   if (!paths.isAbsolute(appPath)) return null;
   try {
     if (platform === 'win32') {
@@ -155,7 +155,7 @@ async function inspectHarness(appPath, {
 async function detectHarness({ selectedPath, home = os.homedir(), platform = process.platform,
   env = process.env, inspect = inspectHarness, listWindowsInstalls: listInstalls = listWindowsInstalls } = {}) {
   if (platform !== 'darwin' && platform !== 'win32') return { installed: false, supported: false, reason: 'platform' };
-  const paths = platform === 'win32' ? path.win32 : path;
+  const paths = platform === 'win32' ? path.win32 : path.posix;
   const candidates = [selectedPath, env.HUIKAN_HARNESS_APP];
   if (platform === 'win32') {
     const local = env.LOCALAPPDATA || paths.join(home, 'AppData', 'Local');
