@@ -1,5 +1,7 @@
 'use strict';
-const fs = require('node:fs/promises');
+// Electron presents app.asar as a virtual directory. Detection needs the physical
+// archive, including its binary header, so it must bypass Electron's ASAR hooks.
+const fs = process.versions.electron ? require('original-fs').promises : require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const { execFile } = require('node:child_process');

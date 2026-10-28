@@ -5,8 +5,8 @@ const {publishConnection,discoveryFile}=require('../shared/connection-discovery.
 const {detectHarness}=require('./harness-detection.cjs');
 const {harnessHome,inspectPlugin}=require('./plugin-install-state.cjs');
 const SETUP_MESSAGES={
- 'needs-initialization':'请先打开一次 DeepSeek Harness 完成初始化，再正常退出。回看会自动继续安装插件。',
- 'close-harness':'已识别 DeepSeek Harness。请保存当前工作并正常退出 Harness，回看会自动安装插件，完成后重新打开即可连接。',
+ 'needs-initialization':'请先打开一次 DeepSeek Harness 完成初始化，再完全退出。回看会自动继续安装插件。',
+ 'close-harness':'已识别 DeepSeek Harness。请保存当前工作并完全退出 Harness，回看会自动安装插件，完成后重新打开即可连接。',
  'process-unknown':'暂时无法确认 Harness 是否已退出。请正常退出 Harness 后点击重新检测。',
  'profile-error':'无法读取 Harness 插件安装信息，请检查本机目录权限或先打开 Harness 修复后重新检测。',
  disabled:'回看插件已安装但未启用。请在 Harness 的插件设置中启用；回看会保留你的选择。',

@@ -9,7 +9,7 @@ const dest=path.join(root,'desktop/build');
 await fs.rm(dest,{recursive:true,force:true});
 await fs.mkdir(dest,{recursive:true});
 for(const file of ['LICENSE','THIRD_PARTY_NOTICES.md'])await fs.copyFile(path.join(root,file),path.join(dest,file));
-await build({entryPoints:[path.join(root,'desktop/main.cjs')],outfile:path.join(dest,'workbench.cjs'),bundle:true,platform:'node',format:'cjs',external:['electron'],target:'node22'});
+await build({entryPoints:[path.join(root,'desktop/main.cjs')],outfile:path.join(dest,'workbench.cjs'),bundle:true,platform:'node',format:'cjs',external:['electron','original-fs'],target:'node22'});
 await fs.writeFile(path.join(dest,'main.cjs'),"'use strict';\nif(process.argv.includes('--huikan-companion'))require('./companion/src/main.js');else require('./workbench.cjs');\n");
 await fs.copyFile(path.join(root,'desktop/preload.cjs'),path.join(dest,'preload.cjs'));
 await fs.cp(path.join(root,'ui/dist'),path.join(dest,'renderer'),{recursive:true});

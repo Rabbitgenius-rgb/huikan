@@ -17,7 +17,7 @@ const exited=child=>child.exitCode!==null||child.signalCode!==null;
 async function until(check,timeout,message){
  const end=Date.now()+timeout;
  while(Date.now()<end){const value=await check();if(value)return value;await sleep(350);}
- throw Error(message);
+ throw Error(typeof message==='function'?message():message);
 }
 async function freePort(){
  const server=net.createServer();
@@ -54,7 +54,16 @@ async function main(){
   MENGCANG_RECALL_USER_DATA:path.join(base,'companion'),MENGCANG_RECALL_BRIDGE_DIR:directory,
   NPM_CONFIG_USERCONFIG:path.join(base,'empty.npmrc'),NPM_CONFIG_CACHE:path.join(base,'npm-cache'),NPM_CONFIG_REGISTRY:'https://registry.npmjs.org/'};
  for(const name of Object.keys(env))if(name==='ELECTRON_RUN_AS_NODE'||name==='NODE_OPTIONS'||name==='MENGCANG_RECALL_NATIVE_UI'||name==='MENGCANG_RECALL_DIAGNOSTICS'||/(?:^|_)(?:API_KEY|TOKEN|SECRET|PASSWORD)$/.test(name))delete env[name];
- const owned=new Set();let harness,huikan,result,stage='initialization';
+ const owned=new Set();let harness,huikan,result,stage='initialization',lastStatus='';
+ const setStage=value=>{stage=value;console.log(JSON.stringify({event:'stage',stage}));};
+ const safeWord=value=>typeof value==='string'&&/^[A-Za-z0-9.-]{1,80}$/.test(value)?value:null;
+ function reportStatus(status){
+  const summary={state:safeWord(status.state),pluginSetup:safeWord(status.plugin?.setup),installedVersion:safeWord(status.plugin?.installedVersion),
+   harnessInstalled:status.harness?.installed===true,harnessSupported:status.harness?.supported===true,harnessVersion:safeWord(status.harness?.version),
+   harnessRunning:typeof status.harness?.running==='boolean'?status.harness.running:null,harnessRunningKnown:status.harness?.runningKnown===true,
+   harnessReason:safeWord(status.harness?.reason),libraryReady:status.libraryReady===true};
+  const encoded=JSON.stringify(summary);if(encoded!==lastStatus){lastStatus=encoded;console.log(JSON.stringify({event:'setup-status',...summary}));}return encoded;
+ }
  const rpc=(service,method,params={},timeoutMs=10000)=>callPrivate({directory,service,method,params,timeoutMs});
  const watchdog=setTimeout(()=>{for(const item of owned)if(item.child.pid&&!exited(item.child))item.child.kill('SIGKILL');console.error('Harness integration exceeded its 10-minute deadline.');process.exit(1);},600000);watchdog.unref();
  async function launch(executable,label){
@@ -107,28 +116,37 @@ async function main(){
   return client.evaluate(`(async()=>{const method=${JSON.stringify('recall/'+method)},rpcId=crypto.randomUUID();const response=await fetch('/api/'+method,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type:'client-request',rpcId,method,payload:{args:{request:${JSON.stringify(request)}}}})});if(!response.ok)throw Error('Host request failed');const value=await response.json();if(value.type!=='server-response'||value.rpcId!==rpcId||value.result?.ok!==true)throw Error('Host RPC failed');return value.result.value;})()`,30000);
  }
  try{
-  stage='official Harness initialization';harness=await launch(harnessExe,'Harness');await harnessReady(harness);
+  setStage('official Harness initialization');harness=await launch(harnessExe,'Harness');await harnessReady(harness);
   const original=JSON.parse(await fs.readFile(manifestFile,'utf8'));assert.ok(Array.isArray(original.dsh?.profile?.bundles));
-  await gracefulStop(harness);harness=null;
+  setStage('initial Harness normal shutdown');await gracefulStop(harness);harness=null;
   const checked=await inspectHarness(harnessExe,{platform:'win32',env});assert.equal(checked?.supported,true);assert.equal(checked.running,false);
   const sentinel=crypto.randomUUID();original.huikanSmokeSentinel=sentinel;original.dsh.profile.huikanSmokeSentinel=sentinel;await fs.writeFile(manifestFile,JSON.stringify(original,null,2)+'\n');
-  stage='automatic plugin installation';huikan=await launch(huikanExe,'Huikan');const huikanPage=await page(huikan,url=>url.startsWith('mengcang://app/'));
+  setStage('automatic plugin installation');huikan=await launch(huikanExe,'Huikan');const huikanPage=await page(huikan,url=>url.startsWith('mengcang://app/'));
   const expectedVersion=JSON.parse(await fs.readFile(path.join(__dirname,'../harness-plugin/package.json'),'utf8')).version;
-  await until(async()=>{const status=await appMethod(huikanPage,'connectionStatus');if(['error','install-error','process-unknown','unsupported'].includes(status.state))throw Error(`Huikan automatic setup stopped (${status.state}).`);return status.libraryReady&&['current','installed'].includes(status.plugin?.setup)&&status.plugin.installedVersion===expectedVersion;},180000,'Automatic plugin installation did not complete.');
+  let blockedState='',blockedSince=0;
+  await until(async()=>{
+   const status=await appMethod(huikanPage,'connectionStatus');reportStatus(status);
+   if(['error','install-error','process-unknown','unsupported'].includes(status.state))throw Error(`Huikan automatic setup stopped: ${lastStatus}`);
+   if(['needs-initialization','not-found','plugin-disabled','profile-error','plugin-managed','close-harness'].includes(status.state)){
+    if(blockedState!==status.state){blockedState=status.state;blockedSince=Date.now();}
+    if(Date.now()-blockedSince>15000)throw Error(`Huikan automatic setup remained blocked: ${lastStatus}`);
+   }else{blockedState='';blockedSince=0;}
+   return status.libraryReady&&['current','installed'].includes(status.plugin?.setup)&&status.plugin.installedVersion===expectedVersion;
+  },180000,()=>`Automatic plugin installation did not complete. Last status: ${lastStatus}`);
   const installed=JSON.parse(await fs.readFile(manifestFile,'utf8'));assert.equal(installed.huikanSmokeSentinel,sentinel);assert.equal(installed.dsh.profile.huikanSmokeSentinel,sentinel);
   assert.equal(installed.dsh.profile.bundles.filter(value=>value==='@mengcang/harness-recall').length,1);
   for(const bundle of original.dsh.profile.bundles)assert.ok(installed.dsh.profile.bundles.includes(bundle));
-  const manifestBeforeRetry=await fs.readFile(manifestFile,'utf8');await appMethod(huikanPage,'connectionRetry');assert.equal(await fs.readFile(manifestFile,'utf8'),manifestBeforeRetry);
-  stage='real Harness client heartbeat';harness=await launch(harnessExe,'Harness');const harnessPage=await harnessReady(harness);
+  setStage('installation retry idempotence');const manifestBeforeRetry=await fs.readFile(manifestFile,'utf8');await appMethod(huikanPage,'connectionRetry');assert.equal(await fs.readFile(manifestFile,'utf8'),manifestBeforeRetry);
+  setStage('real Harness client heartbeat');harness=await launch(harnessExe,'Harness');const harnessPage=await harnessReady(harness);
   await until(async()=>{try{const value=await rpc('sticky','connectionStatus');return value.connected===true&&value.hostVersion==='0.2.1-rc.3';}catch{return false;}},60000,'The real Harness client did not publish a supported plugin heartbeat.');
   assert.equal((await appMethod(huikanPage,'connectionStatus')).state,'connected');
-  stage='installed Host capture';const identity=await hostRpc(harnessPage,'info',{});assert.equal(identity.supported,true);
+  setStage('installed Host capture');const identity=await hostRpc(harnessPage,'info',{});assert.equal(identity.supported,true);
   const text='Windows 真实 Harness 插件通道测试\n\n```js\nconst saved = true;\n```';
   const capture={requestId:crypto.randomUUID(),title:'Windows 插件通道测试',text,externalSource:{version:1,provider:'deepseek-harness',instanceId:identity.instanceId,sessionId:'huikan-isolated-fixture',messageId:'sample-message',eventSeq:1,turn:1,sessionTitle:'独立测试数据'}};
   const saved=await hostRpc(harnessPage,'capture',capture);assert.equal(saved.status,'saved');assert.equal(saved.item.text,text);
   const repeated=await hostRpc(harnessPage,'capture',capture);assert.equal(repeated.item.id,saved.item.id);
   const stored=await rpc('mengcang','list',{instanceId:identity.instanceId,sessionId:capture.externalSource.sessionId});assert.equal(stored.items.length,1);assert.equal(stored.items[0].text,text);
-  stage='normal application shutdown';await gracefulStop(harness);harness=null;await gracefulStop(huikan);huikan=null;
+  setStage('normal application shutdown');await gracefulStop(harness);harness=null;await gracefulStop(huikan);huikan=null;
   await until(async()=>{try{await rpc('sticky','connectionStatus');return false;}catch(error){return error.code==='SERVICE_UNAVAILABLE';}},15000,'Owned companion remained active after normal workbench quit.');
   result={officialHarnessInitialized:true,validatedHarnessDetection:true,automaticPluginInstallation:true,unrelatedProfileMetadataPreserved:true,installationRetryIdempotent:true,realHarnessClientHeartbeat:true,pluginDiscoveredBridge:true,installedHostSyntheticCaptureSaved:true,captureRetryDidNotDuplicate:true,normalApplicationQuit:true,modelRequestMade:false,actualConversationUiCaptureTested:false};
  }catch(error){throw Error(`Windows Harness integration failed during ${stage}: ${error.message}`);}

@@ -141,6 +141,31 @@ test('ASAR reader extracts identity and CLI from a real binary archive and rejec
   await assert.rejects(readAsarMetadata(archive), /Invalid ASAR/);
 });
 
+test('Electron detection reads physical ASAR archives using original-fs instead of virtual directories', async t => {
+  const vm = require('node:vm');
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'huikan-electron-asar-'));
+  t.after(() => fs.rm(temp, { recursive: true, force: true }));
+  const archive = path.join(temp, 'app.asar');
+  await fs.writeFile(archive, archiveFixture(identity));
+  const source = await fs.readFile(path.join(__dirname, '../desktop/harness-detection.cjs'), 'utf8');
+  const module = { exports: {} };
+  const loaded = [];
+  vm.runInNewContext(source, {
+    process: { versions: { electron: '44.4.5' }, platform: 'win32', env: {} },
+    Buffer, module,
+    require(id) {
+      loaded.push(id);
+      if (id === 'original-fs') return { promises: fs };
+      if (id === 'node:fs/promises') assert.fail('Electron ASAR hooks would hide the physical archive');
+      return require(id);
+    },
+  });
+  assert.ok(loaded.includes('original-fs'));
+  const result = await module.exports.readAsarMetadata(archive);
+  assert.equal(result.manifest.name, identity.name);
+  assert.equal(result.cliPresent, true);
+});
+
 test('macOS retains bundle identity checks and exposes its existing bundled CLI', async () => {
   const app = '/Applications/DeepSeek Harness.app';
   const found = await inspectHarness(app, { platform: 'darwin',
