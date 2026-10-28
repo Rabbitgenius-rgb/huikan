@@ -28,16 +28,17 @@ async function launch(settle,{timeoutMs=1000}={}){
  });
  const mocks={
   electron:{app,BrowserWindow,ipcMain:{handle:(name,fn)=>handlers.set(name,fn)},protocol:{registerSchemesAsPrivileged(){},handle(){}},Menu:{buildFromTemplate:v=>v,setApplicationMenu(){}},dialog:{showMessageBox:()=>new Promise(resolve=>dialogs.push(()=>resolve({response:0}))),showErrorBox(){throw Error('Unexpected startup failure');}},shell:{}},
-  'node:fs/promises':{async mkdir(){}},'node:path':path,'node:os':{homedir:()=>'/synthetic-home'},
+  'node:fs/promises':{async mkdir(){},async readFile(){throw Object.assign(Error('No selection'),{code:'ENOENT'});}},'node:path':path,'node:os':{homedir:()=>'/synthetic-home'},
   './security.cjs':{trustedFrame:()=>true},
   './app-preferences.cjs':{createPreferences:()=>({async load(){},get:()=>({autoConnect:false}),async settle(){}})},
   './connection-manager.cjs':{createConnectionManager:()=>({async start(){},async close(){},async status(){return{};}})},
   './harness-detection.cjs':{inspectHarness:async()=>null},
+  '../harness-plugin/package.json':require('../harness-plugin/package.json'),
   './recall-bridge.cjs':{async startRecallBridge(options){isQuitting=options.isQuitting;return{async close(){bridgeClosed=true;}};}},
   './recall-presentation.cjs':{createRecallPresentation:()=>({read(){return{};},close(){}})},
   './renderer-quit.cjs':{createRendererQuitGate:options=>createRendererQuitGate({...options,timeoutMs})},
  };
- vm.runInNewContext(main,{require:name=>{assert.ok(Object.hasOwn(mocks,name),name);return mocks[name];},process:{env:{}},__dirname:path.join(root,'desktop'),Response});
+ vm.runInNewContext(main,{require:name=>{assert.ok(Object.hasOwn(mocks,name),name);return mocks[name];},process:{env:{}},__dirname:path.join(root,'desktop'),Response,clearInterval,setInterval});
  await flush();
  return {sent,dialogs,requestQuit(){events.get('before-quit')({preventDefault(){}});},dispose:()=>controller.dispose(),get locked(){return locked;},get quitCount(){return quitCount;},get bridgeClosed(){return bridgeClosed;},get quitting(){return isQuitting();}};
 }

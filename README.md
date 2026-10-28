@@ -12,7 +12,7 @@
 - 按来源线程浏览，搜索摘录，记录已读状态。
 - 重复内容去重、失败重试、归档与恢复。
 - Electron 浮窗和便签，以及来源回跳的插件接口。
-- macOS 设置中自动识别本机 Harness，提供配套插件安装按钮；各平台显示真实握手状态。
+- Windows 自动识别已安装的 Harness 并安装内置插件；macOS 提供识别和安装按钮，连接状态以实际握手为准。
 - 主动保存后在本机识别代码、链接、待办清单和长文，推荐对应组件。
 - 保存与内容特征识别通过本机完成，不需要额外的模型请求。
 
@@ -22,13 +22,13 @@
 
 ## 下载安装
 
-[**下载 Windows 10/11 64 位安装程序（0.2.1）**](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.2.1/Huikan-0.2.1-windows-x64-setup.exe) · [Windows 发行说明](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.2.1)
+[**下载 Windows 10/11 64 位安装程序（0.2.2）**](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.2.2/Huikan-0.2.2-windows-x64-setup.exe) · [Windows 发行说明](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.2.2)
 
 双击安装程序，按向导安装后打开“回看”。无需另装 Node.js；工作台和浮窗一起安装。Windows 安装包未做代码签名，首次运行可能显示“未知发布者”或 SmartScreen 提示；请核对下载来源为本项目的 GitHub 发行页。组织策略禁止运行未签名程序时，需要管理员按其策略处理。
 
 Windows 版已在 GitHub Windows 构建环境中实际安装，工作台与浮窗启动、中文资料路径、示例原文保存、重复请求去重和重启恢复检查通过。此检查使用合成摘录，不等同于真实 Harness 对话界面验收。
 
-Windows 版的 Harness 插件需通过宿主支持的本地插件安装流程导入 [配套插件包（0.2.1）](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.2.1/mengcang-harness-recall-0.2.1.tgz)。当前未验证 Windows Harness 图形界面的完整安装与来源回跳，不提供 Windows 一键识别及安装宿主插件的承诺；插件安装成功并启用后使用本机自动发现。
+Windows 版内置回看插件，启动时自动识别支持的官方 Harness。已初始化且完全退出的宿主会自动安装插件；安装后打开 Harness 即可连接。无需手动导入 `.tgz`，也无需额外安装 Node.js。首次安装可能需要联网下载宿主插件依赖。
 
 [**下载 macOS Apple Silicon 预览包（0.2.0）**](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.2.0/Huikan-0.2.0-mac-arm64.zip) · [发行说明与全部附件](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.2.0)
 
@@ -78,6 +78,14 @@ npm start
 
 当前适配 `0.2.0-rc.2`、`0.2.1-rc.3`，其他版本会明确拒绝留存。构建、打包和宿主配置说明见 [插件文档](harness-plugin/README.md)。
 
+Windows 首次使用：
+
+1. 安装 [DeepSeek Harness 官方桌面版](https://www.deepseek.com/download/)，打开一次完成初始化，再完全退出 Harness。
+2. 安装并打开回看。回看会检查常用目录和当前用户的安装记录，自动安装内置插件；自定义位置可在设置中选择 `DeepSeek Harness.exe`。
+3. 设置提示安装完成后，点击 **打开 Harness**。实际插件握手成功后显示“已连接”，即可在对话中留作回看。
+
+如果 Harness 正在运行，回看会等你完全退出后再安装。已有同版、新版、开发链接或被停用的回看插件会保留；停用的插件需在 Harness 中自行启用。安装失败时可在设置里重新检测重试。关闭“启动时自动连接”会停止后台安装检查。账号登录和模型服务配置仍在 Harness 中完成。
+
 macOS 首次使用：
 
 1. 打开一次 DeepSeek Harness，完成宿主初始化，然后正常退出。
@@ -103,7 +111,7 @@ macOS 首次使用：
 npm run package:win
 ```
 
-输出为仓库旁 `huikan-release/windows/Huikan-0.2.1-windows-x64-setup.exe`。GitHub 仓库的 **Actions → Build Windows → Run workflow** 会在 Windows 环境中运行测试、构建 NSIS 安装程序、实际安装，并启动安装后的程序检查摘录保存与重启恢复；检查成功后在运行附件中提供安装程序和配套插件。工作流不会自动发布新的 Release。
+输出为仓库旁 `huikan-release/windows/Huikan-0.2.2-windows-x64-setup.exe`。GitHub 仓库的 **Actions → Build Windows → Run workflow** 会在 Windows 环境中运行测试、构建 NSIS 安装程序、实际安装，并启动安装后的程序检查摘录保存与重启恢复；另外安装固定版本的官方 Harness，检查初始化、自动安装和插件连接；检查成功后在运行附件中提供安装程序和配套插件。工作流不会自动发布新的 Release。
 
 ## 构建 macOS 预览包
 
@@ -113,7 +121,7 @@ npm run package:win
 npm run package:mac
 ```
 
-输出为仓库旁 `huikan-release/Huikan-0.2.1-mac-arm64.zip`。解压后将“回看.app”放到应用目录即可试用。Mac 构建脚本当前仅面向 Apple Silicon，使用本机临时签名，尚未完成干净机器安装验证、Developer ID 签名与 Apple 公证，不应视作正式稳定发行。
+输出为仓库旁 `huikan-release/Huikan-0.2.2-mac-arm64.zip`。解压后将“回看.app”放到应用目录即可试用。Mac 构建脚本当前仅面向 Apple Silicon，使用本机临时签名，尚未完成干净机器安装验证、Developer ID 签名与 Apple 公证，不应视作正式稳定发行。
 
 ## 正式签名与 Apple 公证
 
