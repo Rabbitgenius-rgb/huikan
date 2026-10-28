@@ -22,30 +22,36 @@ async function windowsAcl(paths, secure = false) {
   const fingerprints=await Promise.all(paths.map(fingerprint));
   const pending=paths.filter((file,index)=>secure||aclCache.get(file)?.fingerprint!==fingerprints[index]||aclCache.get(file)?.expires<Date.now());
   if(!pending.length)return;
-  const script = `$ErrorActionPreference='Stop'; try {
+  const script = `$ErrorActionPreference='Stop'; $stage='identity'; try {
     $sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User;
     $paths=ConvertFrom-Json $env:HUIKAN_PRIVATE_PATHS;
     foreach($p in $paths) {
+      $stage='file';
       $item=Get-Item -LiteralPath $p -Force;
       if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'unsafe'};
-      $acl=Get-Acl -LiteralPath $p;
+      $stage='read-acl'; $acl=Get-Acl -LiteralPath $p;
+      $stage='owner';
       $owner=$acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value;
       $allowed=@($sid.Value,'S-1-5-18','S-1-5-32-544');
       if($allowed -notcontains $owner){throw 'owner'};
       if($env:HUIKAN_PRIVATE_SECURE -eq '1') {
+        $stage='directory';
         if(-not $item.PSIsContainer){throw 'directory'};
-        $acl=New-Object System.Security.AccessControl.DirectorySecurity;
+        $stage='create-acl'; $acl=[System.Security.AccessControl.DirectorySecurity]::new();
         $acl.SetOwner($sid); $acl.SetAccessRuleProtection($true,$false);
-        $rule=New-Object System.Security.AccessControl.FileSystemAccessRule($sid,'FullControl','ContainerInherit,ObjectInherit','None','Allow');
-        $acl.AddAccessRule($rule); Set-Acl -LiteralPath $p -AclObject $acl;
+        $stage='create-rule';
+        $rule=[System.Security.AccessControl.FileSystemAccessRule]::new($sid,[System.Security.AccessControl.FileSystemRights]::FullControl,[System.Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit',[System.Security.AccessControl.PropagationFlags]::None,[System.Security.AccessControl.AccessControlType]::Allow);
+        $acl.AddAccessRule($rule); $stage='write-acl'; Set-Acl -LiteralPath $p -AclObject $acl;
+        $stage='read-acl';
         $acl=Get-Acl -LiteralPath $p;
       };
+      $stage='permissions';
       if($acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]).Count -eq 0){throw 'permissions'};
       foreach($rule in $acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier])) {
         if($rule.AccessControlType -eq 'Allow' -and $allowed -notcontains $rule.IdentityReference.Value){throw 'permissions'};
       };
     }; exit 0
-  } catch { exit 1 }`;
+  } catch { [Console]::Out.WriteLine('HUIKAN_ACL:'+ $stage + ':' + $_.Exception.GetType().Name); exit 1 }`;
   const executable = path.join(process.env.SystemRoot || 'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
   try {
     await run(executable, ['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')], {
@@ -60,7 +66,14 @@ async function windowsAcl(paths, secure = false) {
       if(aclCache.size>128)aclCache.clear();
       aclCache.set(file,{fingerprint:current,expires:Date.now()+5000});
     }
-  } catch { throw unsafe('本机连接'); }
+  } catch(error) {
+    const diagnostic=String(error.stdout||'').match(/HUIKAN_ACL:(identity|file|read-acl|owner|directory|create-acl|create-rule|write-acl|permissions):([A-Za-z]{1,80})/);
+    const result=unsafe('本机连接');
+    // Only fixed stages and exception type names are allowed into logs. Raw
+    // PowerShell stderr can contain local paths and must never be exposed.
+    result.message+=diagnostic?` (Windows ACL: ${diagnostic[1]}/${diagnostic[2]})`:' (Windows ACL: validation failed)';
+    throw result;
+  }
 }
 async function privateDirectory(directory) {
   const created=await fs.mkdir(directory,{recursive:true,mode:0o700});

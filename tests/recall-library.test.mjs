@@ -161,21 +161,23 @@ test('workspace change after native commit rejects the stale acknowledgement whi
  current=true;await assert.rejects(library.call('setReview',{id:committed.cards[0].id,due:false}),{code:'WORKSPACE_CHANGED'});
  assert.equal((await reopened.call('get',{id:committed.cards[0].id})).item.due,false);
 });
-test('renderer sends failure rather than success when disposed during a committed capture',async()=>{
- const {session}=setup(),results=[];let listener,dispose;
+test('renderer sends failure rather than success when disposed during a committed capture',{timeout:5000},async()=>{
+ const {session}=setup(),results=[];let listener,dispose,ack;
+ const acknowledged=new Promise(resolve=>{ack=resolve;});
  const wrapped={load:()=>session.load(),get state(){return session.state;},get revision(){return session.revision;},async commit(...args){const result=await session.commit(...args);dispose();return result;}};
- const api={subscribe:fn=>{listener=fn;return()=>{listener=null;};},recallReady:async()=>{},recallResult:async x=>results.push(x)};
+ const api={subscribe:fn=>{listener=fn;return()=>{listener=null;};},recallReady:async()=>{},recallResult:async x=>{results.push(x);ack();}};
  dispose=connectRecallRenderer({api,session:wrapped,workspaceId:'isolated',isCurrent:()=>true});
  listener({type:'recallRequest',workspaceId:'isolated',commandId:'switched',method:'capture',params:request()});
- for(let i=0;i<50&&!results.length;i++)await tick();
+ await acknowledged;
  assert.equal(results.length,1);assert.equal(results[0].ok,false);assert.equal(results[0].error.code,'WORKSPACE_CHANGED');assert.equal(session.state.cards.length,1);
 });
-test('renderer acknowledges only its addressed request after committed result and cleans up listener',async()=>{
-  const {session}=setup(),events=[],results=[];let listener;
-  const api={subscribe:fn=>{listener=fn;return()=>{listener=null;};},recallReady:async x=>events.push(x),recallResult:async x=>results.push(x)};
+test('renderer acknowledges only its addressed request after committed result and cleans up listener',{timeout:5000},async()=>{
+  const {session}=setup(),events=[],results=[];let listener,ack;
+  const acknowledged=new Promise(resolve=>{ack=resolve;});
+  const api={subscribe:fn=>{listener=fn;return()=>{listener=null;};},recallReady:async x=>events.push(x),recallResult:async x=>{results.push(x);ack();}};
   const close=connectRecallRenderer({api,session,workspaceId:'isolated',isCurrent:()=>true});
   listener({type:'recallRequest',workspaceId:'other',commandId:'bad',method:'capture',params:request()});assert.equal(results.length,0);
   listener({type:'recallRequest',workspaceId:'isolated',commandId:'right',method:'capture',params:request()});
-  for(let i=0;i<30&&!results.length;i++)await tick();assert.equal(results[0].ok,true);assert.equal(results[0].result.revision,1);assert.equal(session.state.cards.length,1);
+  await acknowledged;assert.equal(results[0].ok,true);assert.equal(results[0].result.revision,1);assert.equal(session.state.cards.length,1);
   close();assert.equal(listener,null);assert.deepEqual(events.map(x=>x.ready),[true,false]);
 });
