@@ -19,6 +19,23 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             ui/package-lock.json
+      - name: Install the supported official Harness
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'deepseek-harness-0.2.1-rc.3.exe'
+          Invoke-WebRequest -Uri 'https://download.deepseek.com/dsh-desk/bin/win-x64/deepseek-harness-0.2.1-rc.3-win-x64.exe' -OutFile $installer
+          $expected = 'q5IGr2Bf+TvvCpagHj49Ypn/ZrqR7kqrYpLjqXP7VfDINmddlqZQmG+YfsdL3q3EdTRMRlKz/a3jDAEzdNdDOw=='
+          $actual = [Convert]::ToBase64String([Convert]::FromHexString((Get-FileHash $installer -Algorithm SHA512).Hash))
+          if ($actual -ne $expected) { throw 'Official Harness installer checksum mismatch' }
+          $destination = Join-Path $env:RUNNER_TEMP 'huikan-host/宿主验证/DeepSeek Harness'
+          $process = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$destination") -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Harness installer exited with $($process.ExitCode)" }
+          if (!(Test-Path "$destination/DeepSeek Harness.exe")) { throw 'Harness executable missing' }
+          "HUIKAN_HARNESS_EXE=$destination/DeepSeek Harness.exe" >> $env:GITHUB_ENV
+      - name: Verify official installation discovery
+        shell: pwsh
+        run: |
+          node -e "const a=require('node:assert/strict'),p=require('node:path');require('./desktop/harness-detection.cjs').detectHarness().then(h=>{a.equal(h.supported,true,'Official Harness must be discovered without a selected path');a.equal(p.resolve(h.path).toLowerCase(),p.dirname(process.env.HUIKAN_HARNESS_EXE).toLowerCase());console.log('Official Harness discovered from Windows installation records');}).catch(e=>{console.error(e.message);process.exitCode=1;})"
       - run: npm ci
       - run: npm --prefix ui ci
       - run: npm test
@@ -36,19 +53,6 @@ jobs:
       - name: Launch, save, and restore in the installed application
         shell: pwsh
         run: node scripts/smoke-packaged.cjs "$env:HUIKAN_INSTALLED_EXE"
-      - name: Install the supported official Harness
-        shell: pwsh
-        run: |
-          $installer = Join-Path $env:RUNNER_TEMP 'deepseek-harness-0.2.1-rc.3.exe'
-          Invoke-WebRequest -Uri 'https://download.deepseek.com/dsh-desk/bin/win-x64/deepseek-harness-0.2.1-rc.3-win-x64.exe' -OutFile $installer
-          $expected = 'q5IGr2Bf+TvvCpagHj49Ypn/ZrqR7kqrYpLjqXP7VfDINmddlqZQmG+YfsdL3q3EdTRMRlKz/a3jDAEzdNdDOw=='
-          $actual = [Convert]::ToBase64String([Convert]::FromHexString((Get-FileHash $installer -Algorithm SHA512).Hash))
-          if ($actual -ne $expected) { throw 'Official Harness installer checksum mismatch' }
-          $destination = Join-Path $env:RUNNER_TEMP 'huikan-host/宿主验证/DeepSeek Harness'
-          $process = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$destination") -Wait -PassThru
-          if ($process.ExitCode -ne 0) { throw "Harness installer exited with $($process.ExitCode)" }
-          if (!(Test-Path "$destination/DeepSeek Harness.exe")) { throw 'Harness executable missing' }
-          "HUIKAN_HARNESS_EXE=$destination/DeepSeek Harness.exe" >> $env:GITHUB_ENV
       - name: Verify automatic plugin installation with official Harness
         shell: pwsh
         run: node scripts/smoke-windows-harness.cjs "$env:HUIKAN_INSTALLED_EXE" "$env:HUIKAN_HARNESS_EXE"

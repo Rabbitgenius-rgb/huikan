@@ -87,7 +87,7 @@ async function listWindowsInstalls({ env = process.env, execute = run } = {}) {
             for($i=0;$i -lt $limit;$i++){
               $app=$null;try{
                 $app=$key.OpenSubKey($names[$i]);
-                if($null -ne $app -and $app.GetValue('DisplayName') -eq 'DeepSeek Harness'){
+                if($null -ne $app -and $app.GetValue('DisplayName') -match '^DeepSeek Harness(?: [0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.]+)?(?:\\+[A-Za-z0-9.]+)?)?$'){
                   $location=$app.GetValue('InstallLocation');
                   if($location -is [string] -and $location.Length -lt 32768 -and $paths.Count -lt 32){$paths.Add($location)}
                 }

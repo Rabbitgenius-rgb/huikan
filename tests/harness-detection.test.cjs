@@ -87,6 +87,11 @@ test('Windows registry lookup is bounded, noninteractive and uses .NET; failures
     assert.match(script, /RegistryHive\]::CurrentUser/);
     assert.match(script, /Math\]::Min\(\$names.Length,2048\)/);
     assert.doesNotMatch(script, /Import-Module|Get-ItemProperty|Get-ChildItem|ConvertTo-Json/);
+    const displayNamePattern = script.match(/GetValue\('DisplayName'\) -match '([^']+)'/);
+    assert.ok(displayNamePattern, 'Match official older version-suffixed uninstall names');
+    const displayName = new RegExp(displayNamePattern[1], 'i');
+    for (const name of ['DeepSeek Harness', 'DeepSeek Harness 0.2.1-rc.3', 'DeepSeek Harness 0.2.0-rc.2', 'DeepSeek Harness 0.3.0+build.1']) assert.ok(displayName.test(name));
+    for (const name of ['Other DeepSeek Harness', 'DeepSeek Harness helper', 'DeepSeek Harness 0x2x1', 'DeepSeek Harness 0.2.1-rc.3 Uninstaller']) assert.equal(displayName.test(name), false);
     return Buffer.from('D:\\测试 用户\\DeepSeek Harness', 'utf8').toString('base64');
   } });
   assert.deepEqual(result, ['D:\\测试 用户\\DeepSeek Harness']);
