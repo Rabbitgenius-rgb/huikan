@@ -49,4 +49,5 @@ contextBridge.exposeInMainWorld('api', {
 
   // shared
   onSettings: (cb) => on('settings', cb),
+  onGlassMaterial: (cb) => on('glass:material', cb),
 });

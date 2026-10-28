@@ -17,3 +17,6 @@ footer { display: flex; justify-content: space-between; gap: 12px; font-size: 11
 .recall-paragraph { white-space: pre-wrap; overflow-wrap: anywhere; }
 .recall-code { white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.6 ui-monospace,SFMono-Regular,monospace; }
 .preview-body a { color: #315d9f; text-decoration: underline; }
+html[data-float-appearance] #excerpt { background: var(--float-bg); color: var(--float-text); border-radius: var(--float-radius); box-shadow: var(--float-shadow); }
+html[data-float-appearance] :is(header, footer) { color: var(--float-text); opacity: .68; }
+html[data-float-appearance] .preview-body a { color: var(--float-accent); }

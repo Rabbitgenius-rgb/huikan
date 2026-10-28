@@ -1,0 +1,17 @@
+/* A native DWM/NSVisualEffectView backdrop sits underneath this tint. */
+html[data-glass-material="solid"] .panel,
+html[data-glass-material="solid"] #excerpt {
+  background: var(--float-bg-solid, #f7f7f8);
+}
+/* Custom appearance must never override the user's accessibility contrast. */
+html[data-glass-high-contrast="true"] :is(.panel, #excerpt) {
+  background: Canvas !important;
+  color: CanvasText !important;
+  border: 1px solid CanvasText;
+}
+html[data-glass-high-contrast="true"] :is(.title, #conv-title, .chapter-title, .review-count, .connection, header, footer) {
+  color: CanvasText !important;
+}
+@media (forced-colors: active) {
+  :is(.panel, #excerpt) { background: Canvas !important; color: CanvasText !important; border: 1px solid CanvasText; }
+}

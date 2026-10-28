@@ -1,7 +1,8 @@
 (() => {
   const excerpt = document.getElementById('excerpt');
   const make = (tag, text) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; return el; };
-  window.api.onPreview(({ request, item }) => {
+  window.api.onPreview(({ request, item, settings }) => {
+    window.applyFloatAppearance(settings);
     excerpt.replaceChildren();
     const header = make('header'); header.append(make('span', '回看原文'), make('span', `第 ${item.externalSource.turn} 轮`));
     const body = make('div'); body.className = 'preview-body';

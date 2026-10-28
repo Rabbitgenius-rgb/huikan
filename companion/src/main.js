@@ -4,6 +4,7 @@ const path = require('path');
 const os = require('os');
 const { createRecallService } = require('./recall-service.cjs');
 const { panelPosition } = require('./panel-position.cjs');
+const { glassWindowOptions, attachGlassMaterial } = require('./window-material.cjs');
 const { startPrivateServer, callPrivate } = require('./transport');
 app.setName('梦藏回看候选');
 const candidateRoot = path.resolve(__dirname, '../..');
@@ -59,14 +60,7 @@ function createPanel() {
     height: PANEL_H,
     show: false,
     frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
-    // Native behind-window blur: CSS backdrop-filter cannot sample the desktop.
-    ...(process.platform === 'darwin' ? {
-      vibrancy: 'menu',
-      visualEffectState: 'active',
-      roundedCorners: true,
-    } : {}),
+    ...glassWindowOptions(),
     resizable: false,
     movable: false,
     fullscreenable: false,
@@ -76,6 +70,7 @@ function createPanel() {
     webPreferences: { preload: PRELOAD, contextIsolation: true, sandbox: true, accessibleTitle: '梦藏对话回看条目' },
   });
   win.accessibleTitle = '梦藏 · 对话回看浮窗';
+  attachGlassMaterial(win);
   if (process.platform !== 'win32') win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   protectWindow(win);
   win.loadFile(path.join(__dirname, 'panel', 'index.html'));

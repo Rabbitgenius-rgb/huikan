@@ -52,6 +52,16 @@ jobs:
       - name: Launch, save, and restore in the installed application
         shell: pwsh
         run: node scripts/smoke-packaged.cjs "$env:HUIKAN_INSTALLED_EXE"
+      - name: Verify native Windows glass and capture composited evidence
+        shell: pwsh
+        run: node scripts/smoke-windows-glass.cjs "$env:HUIKAN_INSTALLED_EXE"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: huikan-windows-glass-evidence
+          path: dist/windows-glass/*
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Verify automatic plugin installation with official Harness
         shell: pwsh
         run: node scripts/smoke-windows-harness.cjs "$env:HUIKAN_INSTALLED_EXE" "$env:HUIKAN_HARNESS_EXE"

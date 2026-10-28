@@ -2,6 +2,8 @@
 const { BrowserWindow, screen } = require('electron');
 const path = require('path');
 const { state, PRELOAD } = require('./state');
+const { glassWindowOptions, attachGlassMaterial } = require('./window-material.cjs');
+const settings = require('./settings');
 
 // A separate, non-interactive window lets the excerpt sit outside native glass.
 function attach(panel, ipcMain) {
@@ -16,7 +18,7 @@ function attach(panel, ipcMain) {
   };
   const deliver = () => {
     if (active && loaded && panel.isVisible() && !state.tearing) {
-      preview.webContents.send('preview:content', active);
+      preview.webContents.send('preview:content', { ...active, settings: settings.current() });
     }
   };
   function ensureWindow() {
@@ -25,16 +27,14 @@ function attach(panel, ipcMain) {
     preview = new BrowserWindow({
       title: '梦藏 · 回看原文预览',
       width: 330, height: 400, show: false, parent: panel,
-      frame: false, transparent: true, backgroundColor: '#00000000',
-      ...(process.platform === 'darwin' ? {
-        vibrancy: 'menu', visualEffectState: 'active', roundedCorners: true,
-      } : {}),
+      frame: false, ...glassWindowOptions(),
       resizable: false, movable: false, focusable: false,
       fullscreenable: false, skipTaskbar: true, alwaysOnTop: true,
       hasShadow: true,
       webPreferences: { preload: PRELOAD, contextIsolation: true, sandbox: true, accessibleTitle: '回看原文预览内容' },
     });
     preview.accessibleTitle = '梦藏 · 回看原文预览';
+    attachGlassMaterial(preview);
     preview.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     preview.webContents.on('will-navigate', event => event.preventDefault());
     preview.setIgnoreMouseEvents(true);
