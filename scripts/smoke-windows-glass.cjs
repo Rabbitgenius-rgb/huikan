@@ -71,13 +71,27 @@ async function main() {
   const fixture = await startPrivateServer({directory, service:'mengcang', handlers:{list:() => ({workspaceId:'glass-fixture', revision:1, items})}});
   const env = {...process.env, MENGCANG_RECALL_USER_DATA:userData, MENGCANG_RECALL_BRIDGE_DIR:directory, HUIKAN_DISCOVERY_FILE:path.join(base, 'discovery.json')};
   for (const name of Object.keys(env)) if (['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'MENGCANG_RECALL_NATIVE_UI', 'MENGCANG_RECALL_DIAGNOSTICS'].includes(name) || /(?:^|_)(?:API_KEY|TOKEN|SECRET|PASSWORD)$/.test(name)) delete env[name];
-  let child, inspector, heartbeat, result;
+  let child, inspector, heartbeat, result, backdropHandle, evidenceWindows = [];
+  const checkpoints = [];
   const watchdog = setTimeout(() => { if (child?.pid && !exited(child)) child.kill('SIGKILL'); console.error('Native glass verification exceeded its deadline.'); process.exit(1); }, 180000); watchdog.unref();
   async function capture(name, windows, backdrop) {
     const resultFile = path.join(base, `${name}.json`), input = path.join(base, `${name}-input.json`);
     await fs.writeFile(input, JSON.stringify({windows, backdrop, result:resultFile, screenshot:path.join(output, `${name}.png`)}));
     await runFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'windows-glass-evidence.ps1'), '-InputFile', input], {windowsHide:true, timeout:30000, maxBuffer:512*1024});
     return JSON.parse((await fs.readFile(resultFile, 'utf8')).replace(/^\uFEFF/, ''));
+  }
+  async function checkpoint(stage) {
+    const value = await inspector.evaluate(expression(`
+      const preview=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().endsWith('/panel/preview.html'));
+      return {panelVisible:state.panel.isVisible(),panelFocused:state.panel.isFocused(),previewVisible:preview?.isVisible()||false,
+        renderer:await state.panel.webContents.executeJavaScript('({visible:document.visibilityState,focused:document.hasFocus(),hover:document.querySelector(".item:hover")?.dataset.id||null,events:window.__huikanGlassEvents||[]})')};
+    `));
+    checkpoints.push({stage, ...value});
+    await fs.writeFile(path.join(output, 'lifecycle.json'), JSON.stringify(checkpoints, null, 2)+'\n');
+    console.log(JSON.stringify({stage,panelVisible:value.panelVisible,panelFocused:value.panelFocused,previewVisible:value.previewVisible,rendererVisible:value.renderer.visible,rendererFocused:value.renderer.focused,hover:value.renderer.hover}));
+  }
+  async function waitFocused() {
+    await until(() => inspector.evaluate(expression(`return state.panel.isVisible() && state.panel.isFocused() && state.panel.webContents.executeJavaScript('document.visibilityState==="visible" && document.hasFocus()');`)), 5000, 'Native panel and renderer did not regain visible focus.');
   }
   try {
     const port = await freePort();
@@ -103,23 +117,42 @@ async function main() {
       await win.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent(html));win.show();
       return {handle:hwnd(win),bounds};
     `));
+    backdropHandle = background.handle;
     await capture('background-only', [], background.handle);
     const panel = await inspector.evaluate(expression(`
       state.panel.setBounds({x:${background.bounds.x+40},y:${background.bounds.y+80},width:320,height:400});state.panel.show();state.panel.focus();
       return {name:'panel',handle:hwnd(state.panel)};
     `));
+    evidenceWindows = [panel];
+    await waitFocused();
+    await inspector.evaluate(expression(`return state.panel.webContents.executeJavaScript('window.__huikanGlassEvents=[]; for(const type of ["mouseover","mouseout","mousemove","focus","blur","visibilitychange"]){window.addEventListener(type,e=>{window.__huikanGlassEvents.push({type:e.type,item:e.target?.closest?.(".item")?.dataset.id||null,focused:document.hasFocus(),visible:document.visibilityState});if(window.__huikanGlassEvents.length>24)window.__huikanGlassEvents.shift();},true);} true;');`));
     const row = await inspector.evaluate(expression(`return state.panel.webContents.executeJavaScript("(()=>{const el=document.querySelector('.item');if(!el)return null;const b=el.getBoundingClientRect();return {x:Math.round(b.left+b.width/2),y:Math.round(b.top+b.height/2)};})()");`));
     assert.ok(row);
     await inspector.evaluate(expression(`state.panel.webContents.sendInputEvent({type:'mouseMove',x:${row.x},y:${row.y}});return true;`));
     const preview = await until(() => inspector.evaluate(expression(`const win=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().endsWith('/panel/preview.html'));return win?.isVisible()?{name:'preview',handle:hwnd(win)}:null;`)), 10000, 'Real hover interaction did not open the excerpt preview.');
+    evidenceWindows = [panel, preview];
+    await checkpoint('first-hover-visible');
+    const firstNative = await capture('native-glass-before-reopen', evidenceWindows, background.handle);
+    await fs.writeFile(path.join(output, 'first-hover.json'), JSON.stringify(firstNative, null, 2)+'\n');
     // Exercise the actual native window lifecycle, then hover again. Retained
     // Acrylic must not prevent dismissal or strand the noninteractive preview.
     await inspector.evaluate(expression('state.panel.hide();return true;'));
     await until(() => inspector.evaluate(expression(`const preview=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().endsWith('/panel/preview.html'));return !state.panel.isVisible() && !preview.isVisible();`)), 5000, 'Panel hide did not also dismiss its excerpt preview.');
-    await inspector.evaluate(expression(`state.panel.show();state.panel.focus();state.panel.webContents.sendInputEvent({type:'mouseMove',x:8,y:8});return true;`));
+    await checkpoint('panel-and-preview-hidden');
+    await inspector.evaluate(expression('state.panel.show();state.panel.focus();return true;'));
+    await waitFocused();
+    await checkpoint('panel-reopened-and-focused');
+    // Chromium can coalesce consecutive injected moves, especially across a
+    // native hide/show. Wait for the renderer to acknowledge leaving the row.
+    await inspector.evaluate(expression('await state.panel.webContents.executeJavaScript("window.__huikanGlassEvents=[]");state.panel.webContents.sendInputEvent({type:"mouseMove",x:8,y:8});return true;'));
+    await until(() => inspector.evaluate(expression(`return state.panel.webContents.executeJavaScript('document.querySelector(".item:hover")===null && window.__huikanGlassEvents.some(e=>e.type==="mousemove"&&e.item===null)');`)), 5000, 'Renderer did not acknowledge moving away from the excerpt row.');
+    await checkpoint('pointer-left-row');
     await inspector.evaluate(expression(`state.panel.webContents.sendInputEvent({type:'mouseMove',x:${row.x},y:${row.y}});return true;`));
+    await until(() => inspector.evaluate(expression(`return state.panel.webContents.executeJavaScript('document.querySelector(".item:hover")?.dataset.id==="glass-0"');`)), 5000, 'Renderer did not acknowledge re-entering the excerpt row.');
+    await checkpoint('pointer-reentered-row');
     const reopenedPreview = await until(() => inspector.evaluate(expression(`const win=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().endsWith('/panel/preview.html'));return win?.isVisible()?{handle:hwnd(win),panelVisible:state.panel.isVisible()}:null;`)), 10000, 'Hover preview did not reopen after the panel was hidden.');
     assert.equal(reopenedPreview.panelVisible, true); assert.equal(reopenedPreview.handle, preview.handle);
+    await checkpoint('preview-reopened');
     const state = await inspector.evaluate(expression(`
       const material=r(src+'/window-material.cjs');
       const wins=[state.panel,BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().endsWith('/panel/preview.html'))];
@@ -146,6 +179,10 @@ async function main() {
     await inspector.evaluate(expression('app.quit();return true;')).catch(()=>{}); inspector.close(); inspector=null;
     await until(() => exited(child), 15000, 'Owned companion did not quit normally.');
     console.log(JSON.stringify({nativeAcrylicVerified:acrylicExpected,solidFallbackVerified:!acrylicExpected,panelAndPreviewRendered:true,hoverOpenedPreview:true,nativeHideAndReopenPassed:true,compositedDesktopCaptured:true,syntheticDataOnly:true}));
+  } catch (error) {
+    if (inspector) await checkpoint('failed').catch(()=>{});
+    if (backdropHandle) await capture('failed-native-glass', evidenceWindows, backdropHandle).catch(()=>{});
+    throw error;
   } finally {
     clearInterval(heartbeat); clearTimeout(watchdog); inspector?.close();
     if (child?.pid && !exited(child)) await runFile('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {windowsHide:true, timeout:15000}).catch(()=>{});

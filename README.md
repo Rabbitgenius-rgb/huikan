@@ -11,7 +11,7 @@
 - 从支持的 DeepSeek Harness 对话中主动保存整条消息或选中文字，保留原文和来源。
 - 按来源线程浏览，搜索摘录，记录已读状态。
 - 重复内容去重、失败重试、归档与恢复。
-- Electron 浮窗和便签，以及来源回跳的插件接口。
+- Electron 浮窗和便签，以及来源回跳的插件接口。Windows 11 22H2 以上支持系统 Acrylic 毛玻璃。
 - Windows 自动识别已安装的 Harness 并安装内置插件；macOS 提供识别和安装按钮，连接状态以实际握手为准。
 - 主动保存后在本机识别代码、链接、待办清单和长文，推荐对应组件。
 - 保存与内容特征识别通过本机完成，不需要额外的模型请求。
@@ -47,6 +47,14 @@ Windows 版内置回看插件，启动时自动识别支持的官方 Harness。�
 这是针对该应用的一次确认，具体操作参见 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。
 
 已对 GitHub 公开下载的原始 ZIP 进行本机复查：独立资料目录中工作台和浮窗启动、示例摘录保存、重启后原文恢复均通过。这不等同于其他 Mac 的首次安装验证。
+
+## 浮窗在 Windows 与 Mac 上的显示
+
+公开安装包共用回看列表、按轮次分组、悬停原文预览及黄色便签。主浮窗为 320 × 400，便签可展开或收起为标题标签；Mac 从菜单栏打开，Windows 从系统托盘或 `Ctrl+Shift+K` 打开。
+
+0.2.3 起，Windows 的回看面板和原文预览使用系统 Desktop Acrylic，预览同步浮窗的颜色和透明度。原生毛玻璃要求 Windows 11 22H2（build 22621）及以上；Windows 10、旧版 Windows 11、系统减少透明度或高对比度模式采用实色背景。系统省电、远程会话或硬件环境也可能使材质退化为实色。支持范围见 [Electron 系统材质说明](https://www.electronjs.org/docs/latest/api/base-window#winsetbackgroundmaterialmaterial-windows)。
+
+Mac 使用系统 vibrancy；字体、圆角和材质由各自系统绘制，不能保证逐像素相同。黄色便签保持原有纸面。早期本机 Swift 原生版的主题分组界面不包含在当前公开安装包中。
 
 ## 快速体验界面
 
@@ -111,7 +119,7 @@ macOS 首次使用：
 npm run package:win
 ```
 
-输出为仓库旁 `huikan-release/windows/Huikan-0.2.2-windows-x64-setup.exe`。GitHub 仓库的 **Actions → Build Windows → Run workflow** 会在 Windows 环境中运行测试、构建 NSIS 安装程序、实际安装，并启动安装后的程序检查摘录保存与重启恢复；另外安装固定版本的官方 Harness，检查初始化、自动安装和插件连接；检查成功后在运行附件中提供安装程序和配套插件。工作流不会自动发布新的 Release。
+输出为仓库旁 `huikan-release/windows/Huikan-0.2.3-windows-x64-setup.exe`。GitHub 仓库的 **Actions → Build Windows → Run workflow** 会在 Windows 环境中运行测试、构建 NSIS 安装程序、实际安装，并启动安装后的程序检查摘录保存与重启恢复；另外安装固定版本的官方 Harness，检查初始化、自动安装和插件连接；检查成功后在运行附件中提供安装程序和配套插件。工作流不会自动发布新的 Release。
 
 ## 构建 macOS 预览包
 
@@ -121,7 +129,7 @@ npm run package:win
 npm run package:mac
 ```
 
-输出为仓库旁 `huikan-release/Huikan-0.2.2-mac-arm64.zip`。解压后将“回看.app”放到应用目录即可试用。Mac 构建脚本当前仅面向 Apple Silicon，使用本机临时签名，尚未完成干净机器安装验证、Developer ID 签名与 Apple 公证，不应视作正式稳定发行。
+输出为仓库旁 `huikan-release/Huikan-0.2.3-mac-arm64.zip`。解压后将“回看.app”放到应用目录即可试用。Mac 构建脚本当前仅面向 Apple Silicon，使用本机临时签名，尚未完成干净机器安装验证、Developer ID 签名与 Apple 公证，不应视作正式稳定发行。
 
 ## 正式签名与 Apple 公证
 
