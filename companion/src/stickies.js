@@ -132,7 +132,7 @@ function createWindow(id, point) {
   });
   win.accessibleTitle = '梦藏 · 回看便签';
   win.setAlwaysOnTop(true, 'floating');
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  if (process.platform !== 'win32') win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   protectWindow(win);
   win.loadFile(path.join(__dirname, 'note', 'index.html'), { query: { id } });
   return win;

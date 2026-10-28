@@ -23,7 +23,7 @@ function createGlassWindow({ userData, reveal, openRecall }) {
   const win = new BrowserWindow({ ...fit(initial.anchorX, initial.y, height), title: '梦藏 · 玻璃珠收藏', show: false, frame: false, transparent: true,
     backgroundColor: '#00000000', hasShadow: false, resizable: false, movable: true, fullscreenable: false, skipTaskbar: true, alwaysOnTop: true,
     webPreferences: { preload: path.join(__dirname, 'glass/preload.cjs'), contextIsolation: true, sandbox: true, backgroundThrottling: true, spellcheck: false } });
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  if (process.platform !== 'win32') win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   // Keep the native window as narrow as its visible beads. Pointer delivery
   // must not depend on a timer toggling ignoreMouseEvents before mouse-down.
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));

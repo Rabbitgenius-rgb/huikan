@@ -1,6 +1,6 @@
 {
   "name": "huikan",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "回看：AI 对话内容的本地留存与回看工作台",
   "scripts": {
@@ -12,11 +12,13 @@
     "companion": "node scripts/run.mjs companion",
     "package:mac": "npm run build && node scripts/package-macos.mjs",
     "package:mac:check": "node scripts/package-macos.mjs --check-release",
-    "package:mac:release": "npm run package:mac:check && npm run build && node scripts/package-macos.mjs --release"
+    "package:mac:release": "npm run package:mac:check && npm run build && node scripts/package-macos.mjs --release",
+    "package:win": "npm run build && node scripts/package-windows.mjs"
   },
   "devDependencies": {
     "@electron/packager": "^20.3.0",
     "electron": "44.4.5",
+    "electron-builder": "26.18.1",
     "esbuild": "0.25.12"
   },
   "license": "MIT",

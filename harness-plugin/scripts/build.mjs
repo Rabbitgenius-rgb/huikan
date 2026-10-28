@@ -5,6 +5,7 @@ const root=fileURLToPath(new URL('../',import.meta.url));
 const outputDirectory=process.env.MENGCANG_RECALL_PLUGIN_OUTPUT || join(root,'dist');
 await mkdir(outputDirectory,{recursive:true});
 for(const file of ['host.js','core.js','schemas.js','topic-model.js'])await copyFile(join(root,'src',file),join(outputDirectory,file));
+await copyFile(join(root,'../shared/private-files.cjs'),join(outputDirectory,'private-files.cjs'));
 await copyFile(join(root,'../shared/private-rpc.cjs'),join(outputDirectory,'private-rpc.cjs'));
 await copyFile(join(root,'../shared/topic-contract.cjs'),join(outputDirectory,'topic-contract.cjs'));
 await copyFile(join(root,'../shared/connection-discovery.cjs'),join(outputDirectory,'connection-discovery.cjs'));

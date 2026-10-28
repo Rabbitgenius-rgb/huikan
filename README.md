@@ -12,21 +12,27 @@
 - 按来源线程浏览，搜索摘录，记录已读状态。
 - 重复内容去重、失败重试、归档与恢复。
 - Electron 浮窗和便签，以及来源回跳的插件接口。
-- 设置中自动识别本机 Harness，提供配套插件安装按钮与真实握手状态。
+- macOS 设置中自动识别本机 Harness，提供配套插件安装按钮；各平台显示真实握手状态。
 - 主动保存后在本机识别代码、链接、待办清单和长文，推荐对应组件。
 - 保存与内容特征识别通过本机完成，不需要额外的模型请求。
 
 可选的 AI 主题整理复用 Harness 配置的模型服务，会把待整理摘录发送给该服务。公开版默认使用 Electron 浮窗；本机历史原生浮窗的独立二进制与宿主 Harness 运行时不包含在仓库中。
 
-**阶段：早期开发版。** 当前验证以 macOS Apple Silicon 为主；可构建预览安装包，尚无 Developer ID 签名与 Apple 公证。内容识别使用本机规则，完整 Codex 留存适配、开放组件接口与社区组件分享属于后续计划，详见 [发展计划](docs/ROADMAP.md)。
+**阶段：早期开发版。** 提供 macOS Apple Silicon 与 Windows x64 预览构建；Windows 版尚未做代码签名，Mac 版尚无 Developer ID 签名与公证。内容识别使用本机规则，完整 Codex 留存适配、开放组件接口与社区组件分享属于后续计划，详见 [发展计划](docs/ROADMAP.md)。
 
 ## 下载安装
+
+[**下载 Windows 10/11 64 位安装程序（0.2.1）**](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.2.1/Huikan-0.2.1-windows-x64-setup.exe) · [Windows 发行说明](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.2.1)
+
+双击安装程序，按向导安装后打开“回看”。无需另装 Node.js；工作台和浮窗一起安装。Windows 安装包未做代码签名，首次运行可能显示“未知发布者”或 SmartScreen 提示；请核对下载来源为本项目的 GitHub 发行页。组织策略禁止运行未签名程序时，需要管理员按其策略处理。
+
+Windows 版的 Harness 插件需通过宿主支持的本地插件安装流程导入 [配套插件包（0.2.1）](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.2.1/mengcang-harness-recall-0.2.1.tgz)。当前未验证 Windows Harness 图形界面的完整安装与来源回跳，不提供 Windows 一键识别及安装宿主插件的承诺；插件安装成功并启用后使用本机自动发现。
 
 [**下载 macOS Apple Silicon 预览包（0.2.0）**](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.2.0/Huikan-0.2.0-mac-arm64.zip) · [发行说明与全部附件](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.2.0)
 
 适用于 M 系列芯片 Mac。下载 ZIP 后解压，将“回看.app”移到“应用程序”目录，再打开使用；配套 Harness 插件已内置，无需另行下载源码或安装 Node.js。首次连接步骤见下文“接入 DeepSeek Harness”。
 
-当前为开发预览包，尚无 Developer ID 签名与 Apple 公证，macOS 可能阻止打开；尚未完成干净机器安装验证。Intel Mac 与 Windows 安装包暂未提供。
+当前为开发预览包，尚无 Developer ID 签名与 Apple 公证，macOS 可能阻止打开；尚未完成干净机器安装验证。Intel Mac 与 Windows ARM64 原生安装包暂未提供。
 
 ### Mac 首次打开
 
@@ -70,7 +76,7 @@ npm start
 
 当前适配 `0.2.0-rc.2`、`0.2.1-rc.3`，其他版本会明确拒绝留存。构建、打包和宿主配置说明见 [插件文档](harness-plugin/README.md)。
 
-首次使用：
+macOS 首次使用：
 
 1. 打开一次 DeepSeek Harness，完成宿主初始化，然后正常退出。
 2. 打开回看左下角的 **连接与识别设置**，确认识别到的 Harness 版本；不在常见目录时可选择应用。
@@ -87,6 +93,16 @@ npm start
 
 这不是模型语义分类，识别准确性受原文格式影响；自定义组件、开发者组件接口与组件分享仍在计划中。
 
+## 构建 Windows 预览包
+
+在 Windows 上安装根目录及 `ui/` 依赖后运行：
+
+```sh
+npm run package:win
+```
+
+输出为仓库旁 `huikan-release/windows/Huikan-0.2.1-windows-x64-setup.exe`。GitHub 仓库的 **Actions → Build Windows → Run workflow** 会在 Windows 环境中运行测试、构建 NSIS 安装程序、实际安装，并启动安装后的程序检查摘录保存与重启恢复；检查成功后在运行附件中提供安装程序和配套插件。工作流不会自动发布新的 Release。
+
 ## 构建 macOS 预览包
 
 在 macOS 上安装依赖后运行：
@@ -95,7 +111,7 @@ npm start
 npm run package:mac
 ```
 
-输出为仓库旁 `huikan-release/Huikan-0.2.0-mac-arm64.zip`。解压后将“回看.app”放到应用目录即可试用。当前仅提供 Apple Silicon 构建脚本和本机临时签名，尚未完成干净机器安装验证、Developer ID 签名与 Apple 公证，不应视作正式稳定发行。
+输出为仓库旁 `huikan-release/Huikan-0.2.1-mac-arm64.zip`。解压后将“回看.app”放到应用目录即可试用。Mac 构建脚本当前仅面向 Apple Silicon，使用本机临时签名，尚未完成干净机器安装验证、Developer ID 签名与 Apple 公证，不应视作正式稳定发行。
 
 ## 正式签名与 Apple 公证
 

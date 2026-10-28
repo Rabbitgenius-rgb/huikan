@@ -3,13 +3,14 @@ const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen, globalShor
 const path = require('path');
 const os = require('os');
 const { createRecallService } = require('./recall-service.cjs');
+const { panelPosition } = require('./panel-position.cjs');
 const { startPrivateServer, callPrivate } = require('./transport');
 app.setName('梦藏回看候选');
 const candidateRoot = path.resolve(__dirname, '../..');
 let candidateConfig = {};
 try { candidateConfig = require('../candidate-config.json'); } catch (error) { if (error.code !== 'MODULE_NOT_FOUND') throw error; }
 const userData = process.env.MENGCANG_RECALL_USER_DATA || candidateConfig.userDataPath || (app.isPackaged ? app.getPath('userData') : path.join(candidateRoot, 'runtime/sticky-user'));
-const bridgeDirectory = process.env.MENGCANG_RECALL_BRIDGE_DIR || candidateConfig.bridgeDirectory || (app.isPackaged ? path.join(os.homedir(), 'Library/Application Support/Mengcang Recall/bridge') : path.join(candidateRoot, 'runtime/bridge'));
+const bridgeDirectory = process.env.MENGCANG_RECALL_BRIDGE_DIR || candidateConfig.bridgeDirectory || (app.isPackaged ? (process.platform === 'darwin' ? path.join(os.homedir(), 'Library/Application Support/Mengcang Recall/bridge') : path.join(app.getPath('userData'), 'bridge')) : path.join(candidateRoot, 'runtime/bridge'));
 if (!path.isAbsolute(userData) || !path.isAbsolute(bridgeDirectory)) throw Error('回看数据路径必须是绝对路径');
 app.setPath('userData', userData);
 const diagnosticEnabled = process.env.MENGCANG_RECALL_DIAGNOSTICS === '1';
@@ -47,7 +48,7 @@ function trayIcon() {
     }
   }
   const img = nativeImage.createFromBitmap(buf, { width: size, height: size });
-  img.setTemplateImage(true);
+  if (process.platform === 'darwin') img.setTemplateImage(true);
   return img;
 }
 
@@ -75,7 +76,7 @@ function createPanel() {
     webPreferences: { preload: PRELOAD, contextIsolation: true, sandbox: true, accessibleTitle: '梦藏对话回看条目' },
   });
   win.accessibleTitle = '梦藏 · 对话回看浮窗';
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  if (process.platform !== 'win32') win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   protectWindow(win);
   win.loadFile(path.join(__dirname, 'panel', 'index.html'));
   // Hide on blur, except while a tear-off drag is in progress.
@@ -108,8 +109,7 @@ function showPanel() {
   const tb = state.tray.getBounds();
   const display = screen.getDisplayNearestPoint({ x: tb.x, y: tb.y });
   const area = display.workArea;
-  const x = Math.min(Math.max(Math.round(tb.x + tb.width / 2 - PANEL_W / 2), area.x + 8), area.x + area.width - PANEL_W - 8);
-  const y = Math.round(tb.y + tb.height + 6);
+  const { x, y } = panelPosition(tb, area, PANEL_W, PANEL_H);
   diagnostics.geometry('panel.position', win, tb, area, { x, y, width: PANEL_W, height: PANEL_H });
   win.setPosition(x, y, false);
   win.show();

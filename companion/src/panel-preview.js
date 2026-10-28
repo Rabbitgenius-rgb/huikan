@@ -38,7 +38,7 @@ function attach(panel, ipcMain) {
     preview.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     preview.webContents.on('will-navigate', event => event.preventDefault());
     preview.setIgnoreMouseEvents(true);
-    preview.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    if (process.platform !== 'win32') preview.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     preview.loadFile(path.join(__dirname, 'panel', 'preview.html'));
     preview.webContents.once('did-finish-load', () => { loaded = true; deliver(); });
   }

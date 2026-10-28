@@ -17,17 +17,19 @@ npm run plugin:pack
 
 ## 自动连接
 
-配合回看 0.2.0 桌面版，插件自动发现同一用户运行中的回看桥接。推荐从回看“连接与识别设置”中点击“安装 / 更新回看插件”，正常重启 Harness 后启用插件。首次安装前需打开过一次 Harness，使宿主初始化桌面 profile。
+配合回看 0.2.1 桌面版，插件自动发现同一用户运行中的回看桥接。macOS 推荐从回看“连接与识别设置”中点击“安装 / 更新回看插件”，正常重启 Harness 后启用插件。首次安装前需打开过一次 Harness，使宿主初始化桌面 profile。
 
-Host 每次请求会重新解析发现信息；可选主题服务也会跟随本机桥接变化。发现文件位于 `~/Library/Application Support/Huikan/connection.json`，目录和文件分别限制为当前用户可访问。该文件不含正文、账号或模型密钥。
+Host 每次请求会重新解析发现信息；可选主题服务也会跟随本机桥接变化。macOS 的发现文件位于 `~/Library/Application Support/Huikan/connection.json`，Windows 位于 `%LOCALAPPDATA%\Huikan\connection.json`，目录和文件分别限制为当前用户可访问。该文件不含正文、账号或模型密钥。
 
 已有 `bridgeDirectory` 插件配置、`MENGCANG_RECALL_BRIDGE_DIR` 环境变量仍优先，用于调试或兼容旧部署。显式配置指向旧实例时不会被自动发现覆盖。隔离测试可用 `HUIKAN_DISCOVERY_FILE` 指定独立发现文件。
+
+Windows 使用配套 0.2.1 插件包，按宿主支持的本地插件安装流程导入并启用；不使用 macOS 的 `.app` 选择及安装器。Windows 宿主图形界面的完整安装、留存入口与来源回跳仍需在对应宿主版本中验证。
 
 ## 实现边界
 
 - 用户主动保存整条已完成消息或单条消息中的选中文字。
 - 从宿主 Session / Conversation 接口取得来源，前端选区适配附带上下文校验。
-- Client 经宿主 RPC 调用 Host；Host 通过同用户、带认证的 Unix Socket 连接浮窗。
+- Client 经宿主 RPC 调用 Host；Host 通过同用户、带认证的本机 IPC 连接浮窗（macOS/Linux 为 Unix Socket，Windows 为命名管道）。
 - 保存完成由工作台持久化回执确认；等待写入与失败重试保留原请求 ID。
 - 来源回跳会核对消息和实际定位结果，无法确认时返回失败。
 - 可选主题整理复用宿主已配置的模型；这会向该模型服务发送待整理的摘录。普通留存和回看不依赖模型调用。

@@ -1,0 +1,46 @@
+name: Build Windows
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            ui/package-lock.json
+      - run: npm ci
+      - run: npm --prefix ui ci
+      - run: npm test
+      - run: npm run package:win
+      - name: Install the generated installer
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $installer = (Resolve-Path "../huikan-release/windows/Huikan-$version-windows-x64-setup.exe").Path
+          $destination = Join-Path $env:RUNNER_TEMP 'huikan-installed/回看/Huikan'
+          $process = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$destination") -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer exited with $($process.ExitCode)" }
+          if (!(Test-Path "$destination/Huikan.exe")) { throw 'Installed executable missing' }
+          "HUIKAN_INSTALLED_EXE=$destination/Huikan.exe" >> $env:GITHUB_ENV
+      - name: Launch, save, and restore in the installed application
+        shell: pwsh
+        run: node scripts/smoke-packaged.cjs "$env:HUIKAN_INSTALLED_EXE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: huikan-windows-x64
+          path: |
+            ../huikan-release/windows/Huikan-*-windows-x64-setup.exe
+            harness-plugin/packages/mengcang-harness-recall-*.tgz
+          if-no-files-found: error
+          retention-days: 14

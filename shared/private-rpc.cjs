@@ -1,11 +1,13 @@
 'use strict';
-// Narrow authenticated same-user Unix IPC. Credentials stay in private discovery files.
+// Authenticated local IPC: private Unix sockets or Windows named pipes.
+// Credentials stay in a private directory (Unix permissions / Windows DACL).
 const fs = require('node:fs/promises');
 const constants = require('node:fs').constants;
 const path = require('node:path');
 const os = require('node:os');
 const net = require('node:net');
 const crypto = require('node:crypto');
+const {windows,assertPrivateStat:assertPrivate,privateDirectory,readPrivateJson} = require('./private-files.cjs');
 
 const FORMAT = 'mengcang-recall-rpc-v1';
 const MAX_FRAME = 2 * 1024 * 1024;
@@ -22,25 +24,7 @@ function paths(directory, service) {
   directory = path.resolve(directory);
   const suffix = crypto.createHash('sha256').update(directory + '\0' + service).digest('hex').slice(0, 20);
   const socketDirectory = path.join(os.tmpdir().startsWith('/var/') ? '/private/tmp' : '/tmp', `mcr-${uid() ?? 'user'}-${suffix}`);
-  return { directory, endpoint: path.join(directory, `${service}.json`), lock: path.join(directory, `${service}.lock`), socketDirectory, socketPath: path.join(socketDirectory, 'rpc.sock') };
-}
-function assertPrivate(stat, kind) {
-  if (stat.isSymbolicLink() || (uid() !== null && stat.uid !== uid()) || (stat.mode & 0o077)) throw failure('UNSAFE_ENDPOINT', `${kind}的所有者或权限不安全`);
-}
-async function privateDirectory(directory) {
-  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
-  const stat = await fs.lstat(directory);
-  assertPrivate(stat, '本机桥接目录');
-  if (!stat.isDirectory()) throw failure('UNSAFE_ENDPOINT', '本机桥接目录不可用');
-}
-async function readPrivateJson(file) {
-  const handle = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
-  try {
-    const stat = await handle.stat();
-    assertPrivate(stat, '本机桥接文件');
-    if (!stat.isFile() || stat.size > 8192) throw failure('UNSAFE_ENDPOINT', '本机桥接文件无效');
-    return JSON.parse(await handle.readFile('utf8'));
-  } finally { await handle.close(); }
+  return { directory, endpoint: path.join(directory, `${service}.json`), lock: path.join(directory, `${service}.lock`), socketDirectory, socketPath: windows ? null : path.join(socketDirectory, 'rpc.sock'), pipePrefix: `\\\\.\\pipe\\huikan-${suffix}-` };
 }
 async function atomicJson(file, value) {
   const temp = `${file}.${crypto.randomUUID()}.tmp`;
@@ -82,9 +66,10 @@ async function startPrivateServer({ directory, service, handlers }) {
   const p = paths(directory, service);
   if (!object(handlers) || !Object.keys(handlers).length || Object.entries(handlers).some(([name, fn]) => !/^[a-zA-Z][a-zA-Z0-9]{0,60}$/.test(name) || typeof fn !== 'function')) throw failure('INVALID_HANDLERS', '本机服务方法无效');
   await privateDirectory(p.directory);
-  await privateDirectory(p.socketDirectory);
+  if (!windows) await privateDirectory(p.socketDirectory);
   const token = crypto.randomBytes(32).toString('hex');
   const nonce = crypto.randomUUID();
+  if (windows) p.socketPath = p.pipePrefix + nonce;
   await acquireLock(p, nonce);
   const connections = new Set(), pending = new Set();
   let closing = false;
@@ -120,10 +105,10 @@ async function startPrivateServer({ directory, service, handlers }) {
     });
   });
   try {
-    try { const stat = await fs.lstat(p.socketPath); assertPrivate(stat, '本机连接'); if (!stat.isSocket()) throw failure('UNSAFE_ENDPOINT', '本机连接路径不可用'); await fs.unlink(p.socketPath); }
+    try { if (!windows) { const stat = await fs.lstat(p.socketPath); assertPrivate(stat, '本机连接'); if (!stat.isSocket()) throw failure('UNSAFE_ENDPOINT', '本机连接路径不可用'); await fs.unlink(p.socketPath); } }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(p.socketPath, () => { server.removeListener('error', reject); resolve(); }); });
-    await fs.chmod(p.socketPath, 0o600);
+    if (!windows) await fs.chmod(p.socketPath, 0o600);
     await atomicJson(p.endpoint, { format: FORMAT, service, socketPath: p.socketPath, pid: process.pid, token, nonce });
   } catch (error) {
     server.close();
@@ -141,7 +126,7 @@ async function startPrivateServer({ directory, service, handlers }) {
       for (const socket of connections) socket.destroy();
       await closed;
       try { const current = await readPrivateJson(p.endpoint); if (current.nonce === nonce) await fs.unlink(p.endpoint); } catch {}
-      await fs.rm(p.socketPath, { force: true });
+      if (!windows) await fs.rm(p.socketPath, { force: true });
       try { const current = await readPrivateJson(p.lock); if (current.nonce === nonce) await fs.unlink(p.lock); } catch {}
       })();
       return closePromise;
@@ -156,11 +141,15 @@ async function callPrivate({ directory, service, method, params = {}, timeoutMs 
   let endpoint;
   try { endpoint = await readPrivateJson(p.endpoint); }
   catch (error) { if (error.code === 'ENOENT') throw failure('SERVICE_UNAVAILABLE', '本机服务尚未启动'); throw error; }
+  if (windows && typeof endpoint?.nonce === 'string' && /^[0-9a-f-]{36}$/.test(endpoint.nonce)) p.socketPath = p.pipePrefix + endpoint.nonce;
   if (!object(endpoint) || endpoint.format !== FORMAT || endpoint.service !== service || endpoint.socketPath !== p.socketPath || !/^[0-9a-f]{64}$/.test(endpoint.token)) throw failure('UNSAFE_ENDPOINT', '本机连接信息无效');
+  if (!alive(endpoint.pid)) throw failure('SERVICE_UNAVAILABLE', '本机服务已断开');
+  if (!windows) {
   const socketDirectory = await fs.lstat(p.socketDirectory); assertPrivate(socketDirectory, '本机连接目录');
   const socketStat = await fs.lstat(p.socketPath).catch(() => { throw failure('SERVICE_UNAVAILABLE', '本机服务已断开'); });
   assertPrivate(socketStat, '本机连接');
   if (!socketStat.isSocket()) throw failure('UNSAFE_ENDPOINT', '本机连接不是 Unix socket');
+  }
   const id = crypto.randomUUID();
   const frame = JSON.stringify({ format: FORMAT, id, token: endpoint.token, method, params }) + '\n';
   if (Buffer.byteLength(frame) > MAX_FRAME) throw failure('REQUEST_TOO_LARGE', '留存内容超过本机传输限制');

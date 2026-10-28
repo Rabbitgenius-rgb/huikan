@@ -3,7 +3,7 @@ const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:
 const {callPrivate}=require('../shared/private-rpc.cjs');
 const {publishConnection,discoveryFile}=require('../shared/connection-discovery.cjs');
 const {detectHarness}=require('./harness-detection.cjs');
-function createConnectionManager({directory,companionDirectory,companionPath,companionArguments=[companionPath],executable,preferences,getLibraryReady,env=process.env,detect=detectHarness,call=callPrivate,publish=publishConnection,spawnProcess=spawn,runFile=execFile,onChange=()=>{}}){
+function createConnectionManager({directory,companionDirectory,companionPath,companionArguments=[companionPath],executable,preferences,getLibraryReady,env=process.env,platform=process.platform,detect=detectHarness,call=callPrivate,publish=publishConnection,spawnProcess=spawn,runFile=execFile,onChange=()=>{}}){
  let advertisement,child,selectedPath=null,lastError='',closed=false,starting=null,installing=null;
  const stopping=new WeakSet();
  const file=discoveryFile(env);
@@ -30,7 +30,7 @@ function createConnectionManager({directory,companionDirectory,companionPath,com
   await advertisement?.close();advertisement=null;
  }
  async function status(){
-  const [harness,companion]=await Promise.all([detect({selectedPath}),companionStatus()]);
+  const [harness,companion]=await Promise.all([detect({selectedPath,platform}),companionStatus()]);
   const enabled=preferences.get().autoConnect;
   const ready=!!getLibraryReady();
   const connected=enabled&&ready&&companion?.protocol===1&&companion.connected===true;
@@ -41,6 +41,7 @@ function createConnectionManager({directory,companionDirectory,companionPath,com
   else if(connected){state='connected';message='已连接，可以在 Harness 对话中留作回看。';}
   else if(companion?.protocol===0){state='update-required';message='浮窗版本较旧，请退出旧浮窗后重新尝试。';}
   else if(harness.installed&&!harness.supported){state='unsupported';message='已识别此版本，当前回看插件尚未适配。';}
+  else if(harness.reason==='platform'){state='manual-setup';message='此平台暂不支持自动安装 Harness 插件。请在 Harness 的插件页安装配套插件包，再返回回看连接。';}
   else if(!harness.installed){state='not-found';message='未找到 DeepSeek Harness，可以手动选择应用。';}
   else if(!companion||!ready){state='starting';message='正在准备本机连接…';}
   return {state,message,harness,plugin:{connected:companion?.connected===true,protocol:companion?.protocol||0},libraryReady:ready,automatic:enabled};
@@ -48,7 +49,8 @@ function createConnectionManager({directory,companionDirectory,companionPath,com
  async function install(pluginPackage){
   if(installing)return installing;
   installing=(async()=>{
-   const harness=await detect({selectedPath});if(!harness.installed||!harness.supported)throw Error('请先选择已适配的 DeepSeek Harness。');
+   if(platform!=='darwin')throw Error('此平台暂不支持自动安装，请在 Harness 的插件页安装配套插件包。');
+   const harness=await detect({selectedPath,platform});if(!harness.installed||!harness.supported)throw Error('请先选择已适配的 DeepSeek Harness。');
    const cli=path.join(harness.path,'Contents/Resources/runtime/cli/bin/dsh');await fs.access(cli);
    const profile=path.join(env.DSH_HOME||path.join(os.homedir(),'.dsh'),'profiles/desktop/package.json');
    try{await fs.access(profile);}catch{throw Error('请先打开一次 Harness 完成初始化，再正常退出后安装插件。');}
