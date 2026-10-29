@@ -56,6 +56,9 @@ async function main() {
     });
   }
   const tool = async (name, args = {}) => (await request('tools/call', { name, arguments: args })).result;
+  function savedResult(value, stage) {
+    assert.equal(value?.status, 'saved', JSON.stringify({ stage, error: value?.error || null }));
+  }
   try {
     await launch();
     mcp = spawn(executable, [mcpEntry], { env: { ...env, ELECTRON_RUN_AS_NODE: '1' }, stdio: ['pipe', 'pipe', 'ignore'] });
@@ -83,7 +86,7 @@ async function main() {
     const input = { threadId: a, title: 'Codex 安装包检查', threadTitle: '合成 Codex 线程 A', topic: '本机留存', text: '仅用于适配检查。\n\n```js\nconst source = "Codex";\n```\n\n原文逐字保留。' };
     assert.equal((await tool('save_excerpt', { title: '缺少来源', text: '不能冒认当前对话' })).isError, true);
     const saved = (await tool('save_excerpt', input)).structuredContent;
-    assert.equal(saved.status, 'saved'); assert.equal(saved.inCurrentThread, true);
+    savedResult(saved, 'first-save'); assert.equal(saved.inCurrentThread, true);
     assert.equal(saved.item.text, input.text); assert.equal(saved.item.externalSource.provider, 'codex');
     assert.equal(saved.item.externalSource.sessionId, a); assert.equal(saved.item.externalSource.turn, 0);
     assert.equal(saved.item.manualTopic, input.topic);
@@ -92,7 +95,7 @@ async function main() {
     assert.equal((await tool('list_recalls', { threadId: a })).structuredContent.items.length, 1);
     assert.equal((await tool('list_recalls', { threadId: b })).structuredContent.items.length, 0);
     const another = (await tool('save_excerpt', { threadId: b, title: '线程 B 的摘录', text: '这是另一场对话的独立内容。' })).structuredContent;
-    assert.equal(another.status, 'saved'); assert.equal(another.item.externalSource.sessionId, b);
+    savedResult(another, 'second-thread-save'); assert.equal(another.item.externalSource.sessionId, b);
     const duplicate = (await tool('save_excerpt', { ...input, threadId: b })).structuredContent;
     assert.equal(duplicate.duplicate, true); assert.equal(duplicate.inCurrentThread, false); assert.equal(duplicate.existingSource.sessionId, a);
     assert.equal((await tool('show_recalls', { threadId: b, title: '合成 Codex 线程 B' })).structuredContent.selected, true);
