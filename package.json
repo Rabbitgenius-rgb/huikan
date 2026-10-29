@@ -1,10 +1,10 @@
 {
   "name": "huikan",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "private": true,
   "description": "回看：AI 对话内容的本地留存与回看工作台",
   "scripts": {
-    "build": "npm --prefix ui run build && node harness-plugin/scripts/build.mjs && npm run plugin:pack && node scripts/build-desktop.mjs",
+    "build": "npm --prefix ui run build && node harness-plugin/scripts/build.mjs && npm run plugin:pack && node codex-plugin/scripts/build.mjs && node scripts/build-desktop.mjs",
     "test": "node --test tests/*.test.mjs tests/*.test.cjs",
     "start": "node scripts/run.mjs desktop",
     "plugin:build": "node harness-plugin/scripts/build.mjs",

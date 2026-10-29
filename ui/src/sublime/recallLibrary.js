@@ -47,7 +47,7 @@ export function createRecallLibrary({session,workspaceId,isCurrent=()=>true,hash
         return workspaceReducer(current,{type:'draft.set',key:receiptKey,value:{itemId:prior.id,payloadHash}});
       }
       if(matches.length)throw recallError('RECALL_ARCHIVED','相同摘录已归档，可从回看工作台右上角“已归档”恢复');
-      const card={id,title:params.title,body:params.text,type:'text',origin:'local',sourceTitle:params.externalSource.sessionTitle,sourceLocation:`DeepSeek Harness · 第 ${params.externalSource.turn} 轮`,externalSource:params.externalSource,recallReceipt:{requestId:params.requestId,payloadHash,savedAt},recallDue:true,createdAt:savedAt,updatedAt:savedAt,tags:[]};
+      const card={id,title:params.title,body:params.text,type:'text',origin:'local',sourceTitle:params.externalSource.sessionTitle,sourceLocation:params.externalSource.provider==='codex'?'Codex 对话':`DeepSeek Harness · 第 ${params.externalSource.turn} 轮`,externalSource:params.externalSource,recallReceipt:{requestId:params.requestId,payloadHash,savedAt},recallDue:true,createdAt:savedAt,updatedAt:savedAt,tags:[]};
       const collection=current.collections.find(value=>value.id===RECALL_COLLECTION_ID);
       const actions=[{type:'card.upsert',card},{type:'card.save',id,saved:true},...(collection?[]:[{type:'collection.upsert',collection:{id:RECALL_COLLECTION_ID,title:'对话回看',description:'手动留存的对话信息与原文出处',private:false,pinned:false,cardIds:[]}}]),{type:'collection.toggleCard',id:RECALL_COLLECTION_ID,cardId:id,selected:true}];
       return actions.reduce(workspaceReducer,current);

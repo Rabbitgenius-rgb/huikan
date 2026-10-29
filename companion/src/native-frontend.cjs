@@ -8,7 +8,7 @@ const sourceKeyOf=active=>crypto.createHash('sha256').update(JSON.stringify([act
 function nativeState(snapshot,organized){
  const topicByItem=new Map(organized.topics.flatMap(t=>t.itemIds.map(id=>[id,t.id])));
  const status=snapshot.persistenceError?'本地保存尚未完成':snapshot.pending.length?`${snapshot.pending.length} 条内容待保存`:
-   snapshot.libraryError?'资料库暂未连接，已保存原文仍可查看':!snapshot.connected?'等待 Harness 连接':organized.status==='loading'?'正在生成主题':organized.status==='error'?'主题整理暂未完成，可重试':'已连接';
+   snapshot.libraryError?'资料库暂未连接，已保存原文仍可查看':!snapshot.connected?(snapshot.active?.provider==='codex'?'等待 Codex 连接':'等待 Harness 连接'):organized.status==='loading'?'正在生成主题':organized.status==='error'?'主题整理暂未完成，可重试':'已连接';
  return {type:'state',sourceKey:sourceKeyOf(snapshot.active),status,read:(snapshot.read||[]).filter(id=>snapshot.items.some(item=>item.id===id)),
   data:{conversation:{title:snapshot.active?.sessionTitle||(snapshot.active?.sessionId?'未命名对话':'等待 Harness 对话'),turns:0,topics:organized.topics.map(t=>({id:t.id,title:t.title,brief:t.brief,symbol:t.symbol}))},
    knowledge:snapshot.items.map(item=>({id:item.id,title:item.title||'回看内容',turn:item.externalSource.turn,topic:topicByItem.get(item.id)||'unclassified',tags:[],points:[],summary:item.text,code:''}))},pinned:snapshot.pinned,mode:snapshot.mode};

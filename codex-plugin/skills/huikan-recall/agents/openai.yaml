@@ -1,0 +1,6 @@
+interface:
+  display_name: "回看 Codex 内容"
+  short_description: "保存明确指定的原文，或查看当前线程已有摘录。"
+policy:
+  allow_implicit_invocation: true
+  products: [CODEX]

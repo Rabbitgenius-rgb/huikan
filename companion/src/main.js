@@ -176,8 +176,19 @@ function publishNative() {
     stickies.syncItems();
   }
 }
+function generateHarnessTopics(request) {
+  if (/^codex:[a-f0-9]{24}$/.test(request.instanceId)) throw Error('Codex 摘录暂不使用 Harness 模型整理主题，请使用自定主题');
+  return callPrivate({ directory: bridgeDirectory, service: 'harness-topics', method: 'generate', params: request, timeoutMs: 65000 });
+}
+
 async function revealItem(id) {
-  if (!state.service.getItem(id)) throw Error('找不到回看条目');
+  const item = state.service.getItem(id);
+  if (!item) throw Error('找不到回看条目');
+  if (item.externalSource.provider === 'codex') {
+    const threadId = require('./recall-service.cjs').codexThreadId(item.externalSource.sessionId);
+    await shell.openExternal(`codex://threads/${encodeURIComponent(threadId)}`);
+    return { ok: true, target: 'thread', precise: false };
+  }
   // Bring the installed host forward before asking its browser client to poll.
   // macOS may throttle the client's timers while another app owns focus.
   if (candidateConfig.harnessAppPath) {
@@ -207,7 +218,7 @@ async function nativeAction(action) {
     if (!result.ok) throw Error(result.reason === 'limit' ? '最多同时贴5个便签' : result.reason === 'already-pinned' ? '这段内容已经贴出' : '便签暂未贴出，请重试');
     return result;
   }
-  if (name === 'topics:retry') { topicOrganizer.retry(); return; }
+  if (name === 'topics:retry') { if (snapshot.active?.provider === 'codex') throw Error('Codex 摘录暂不使用 Harness 模型整理主题，请使用自定主题'); topicOrganizer.retry(); return; }
   if (name === 'toggleNotes') { if (typeof action.hidden !== 'boolean') throw Error('便签状态无效'); stickies.setAllHidden(action.hidden); return; }
   if (name === 'mode') { if (!['auto', '2d', '3d'].includes(action.mode)) throw Error('外观无效'); settings.setMode(action.mode); return; }
   if (name === 'retry') { if (!snapshot.pending.some(x => x.requestId === action.id)) throw Error('找不到待保存内容'); return state.service.retry(action.id); }
@@ -222,13 +233,13 @@ if (primary) app.whenReady().then(async () => {
   state.service = await createRecallService({ userData, callDream: (method, params) => callPrivate({ directory: bridgeDirectory, service: 'mengcang', method, params, timeoutMs: 15000 }), onContext: diagnostics.context });
   state.mode = state.service.snapshot().mode;
   topicOrganizer = await createTopicOrganizer({ userData, automatic: Boolean(nativeUIPath),
-    generate: request => callPrivate({ directory: bridgeDirectory, service: 'harness-topics', method: 'generate', params: request, timeoutMs: 65000 }),
+    generate: generateHarnessTopics,
     onChange: publishNative,
   });
   const update = snap => {
     state.snapshot = snap;
     state.items = snap.items;
-    state.conversation = { title: snap.active?.sessionTitle || (snap.active?.sessionId ? '未命名对话' : '等待 Harness 对话'), turns: 0, outline: [] };
+    state.conversation = { title: snap.active?.sessionTitle || (snap.active?.sessionId ? '未命名对话' : '等待 AI 对话'), turns: 0, outline: [] };
     topicOrganizer.update(snap); publishNative();
   };
   state.service.events.on('change', update);
@@ -262,6 +273,7 @@ if (primary) app.whenReady().then(async () => {
   });
   ipcMain.handle('topics:organize', safeReply((event, sourceKey) => {
     if (!trusted(event, state.panel.webContents)) throw Error('此窗口不能整理主题');
+    if (state.service.snapshot().active?.provider === 'codex') throw Error('Codex 摘录暂不使用 Harness 模型整理主题，请使用自定主题');
     return requestTopicOrganization(sourceKey);
   }));
   if (diagnosticEnabled) ipcMain.on('diagnostic:input', (event, value) => { if (trusted(event, state.panel.webContents)) diagnostics.input(state.panel, value); });

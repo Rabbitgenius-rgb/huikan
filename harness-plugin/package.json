@@ -1,6 +1,6 @@
 {
   "name": "@mengcang/harness-recall",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "private": false,
   "type": "module",
   "description": "Local, manual recall bridge for DeepSeek Harness 0.2.0-rc.2 and 0.2.1-rc.3",

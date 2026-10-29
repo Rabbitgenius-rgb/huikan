@@ -17,7 +17,7 @@ async function launch(settle,{timeoutMs=1000}={}){
  const handlers=new Map(),events=new Map(),sent=[];
  let locked=false,quitCount=0,bridgeClosed=false,isQuitting,controller;
  const dialogs=[];
- const app={setName(){},getPath(){return '/synthetic-profile';},requestSingleInstanceLock(){return true;},whenReady(){return Promise.resolve();},on(name,fn){events.set(name,fn);},quit(){quitCount++;}};
+ const app={setName(){},getPath(){return '/synthetic-profile';},getAppPath(){return '/synthetic-app';},requestSingleInstanceLock(){return true;},whenReady(){return Promise.resolve();},on(name,fn){events.set(name,fn);},quit(){quitCount++;}};
  class BrowserWindow{
   constructor(){this.webContents={send(_channel,event){sent.push(event);void controller.handle(event);},setWindowOpenHandler(){},on(){},session:{setPermissionRequestHandler(){}}};}
   on(){} async loadURL(){} isDestroyed(){return false;}
@@ -33,6 +33,8 @@ async function launch(settle,{timeoutMs=1000}={}){
   './app-preferences.cjs':{createPreferences:()=>({async load(){},get:()=>({autoConnect:false}),async settle(){}})},
   './connection-manager.cjs':{createConnectionManager:()=>({async start(){},async close(){},async status(){return{};}})},
   './harness-detection.cjs':{inspectHarness:async()=>null},
+  './codex-setup.cjs':{createCodexSetup:()=>({async status(){return {configured:false,connected:false};},async install(){return {configured:true,connected:false};}})},
+  '../shared/private-rpc.cjs':{callPrivate:async()=>({protocol:1,codex:{connected:false}})},
   '../harness-plugin/package.json':require('../harness-plugin/package.json'),
   './recall-bridge.cjs':{async startRecallBridge(options){isQuitting=options.isQuitting;return{async close(){bridgeClosed=true;}};}},
   './recall-presentation.cjs':{createRecallPresentation:()=>({read(){return{};},close(){}})},

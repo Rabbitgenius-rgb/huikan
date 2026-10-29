@@ -6,6 +6,10 @@ const { EventEmitter } = require('node:events');
 
 const VERSION = '0.2.0-rc.2';
 const SUPPORTED_VERSIONS = new Set(['0.2.0-rc.2', '0.2.1-rc.3']);
+const CODEX_INSTANCE = /^codex:[a-f0-9]{24}$/;
+const CODEX_THREAD = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|thr_[A-Za-z0-9_-]{1,252})$/i;
+const CLIENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CODEX_MESSAGE = /^capture-([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
 const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const fail = (code, message) => Object.assign(new Error(message), { code });
 function string(value, name, max = 256, empty = false) {
@@ -16,9 +20,18 @@ function integer(value, name) {
   if (!Number.isSafeInteger(value) || value < 0) throw fail('INVALID_ARGUMENT', `${name} 无效`);
   return value;
 }
+function codexThreadId(value) {
+  const id = string(value, 'Codex thread ID');
+  if (!CODEX_THREAD.test(id)) throw fail('INVALID_SOURCE', 'Codex 线程标识无效');
+  return id;
+}
 function sourceOf(v) {
-  if (!object(v) || v.version !== 1 || v.provider !== 'deepseek-harness') throw fail('INVALID_SOURCE', '不支持的回看来源');
+  if (!object(v) || v.version !== 1 || !['deepseek-harness', 'codex'].includes(v.provider)) throw fail('INVALID_SOURCE', '不支持的回看来源');
   const out = { version: 1, provider: v.provider, instanceId: string(v.instanceId, 'instanceId'), sessionId: string(v.sessionId, 'sessionId'), messageId: string(v.messageId, 'messageId'), eventSeq: integer(v.eventSeq, 'eventSeq'), turn: integer(v.turn, 'turn'), sessionTitle: string(v.sessionTitle, 'sessionTitle', 500, true) };
+  if (out.provider === 'codex') {
+    codexThreadId(out.sessionId);
+    if (!CODEX_INSTANCE.test(out.instanceId) || !CODEX_MESSAGE.test(out.messageId) || out.eventSeq !== 0 || Object.is(out.eventSeq, -0) || out.turn !== 0 || Object.is(out.turn, -0) || v.selection !== undefined) throw fail('INVALID_SOURCE', 'Codex 来源不能伪造消息或选区位置');
+  }
   if (v.selection !== undefined) {
     const s = v.selection;
     if (!object(s)) throw fail('INVALID_SOURCE', '选区来源无效');
@@ -32,6 +45,7 @@ function captureOf(v) {
   const text = string(v.text, 'text', 200000);
   if (!text.trim()) throw fail('INVALID_ARGUMENT', '不能保存空白内容');
   const externalSource = sourceOf(v.externalSource);
+  if (externalSource.provider === 'codex' && externalSource.messageId.toLowerCase() !== `capture-${v.requestId.toLowerCase()}`) throw fail('INVALID_SOURCE', 'Codex 保存请求与来源标识不一致');
   if (externalSource.selection && externalSource.selection.text !== text) throw fail('INVALID_SOURCE', '保存内容与选区文字不一致');
   const result = { requestId: v.requestId, text, title: string(v.title, 'title', 500), externalSource };
   if (v.manualTopic !== undefined) result.manualTopic = topicTitle(v.manualTopic);
@@ -68,9 +82,10 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     for (const item of Object.values(data.cache)) itemOf(item);
     for (const pending of Object.values(data.outbox)) captureOf(pending.capture);
     if (data.active && (!object(data.active) || typeof data.active.instanceId !== 'string' || typeof data.active.sessionId !== 'string')) throw Error('Invalid active source');
+    if (data.active?.provider === 'codex' && (!CODEX_INSTANCE.test(data.active.instanceId) || !CLIENT_ID.test(data.active.clientId || '') || !CODEX_THREAD.test(data.active.sessionId))) throw Error('Invalid Codex active source');
   } catch (e) { if (e.code !== 'ENOENT') throw fail('STATE_READ_FAILED', '回看本地状态无法读取；保留原文件，请检查后重试'); }
   let writes = Promise.resolve(), persistenceError = null, libraryError = null, generation = 0, refreshPromise = null, refreshKey = null, closed = false;
-  const views = new Map(), inFlight = new Map(), navigations = new Map();
+  const views = new Map(), codexClients = new Map(), inFlight = new Map(), navigations = new Map();
   const libraryRevisions = new Map();
   function acceptRevision(result) {
     const workspaceId = string(result?.workspaceId, 'workspaceId', 500);
@@ -91,6 +106,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     writes = task.catch(() => {});
     return task;
   }
+  function liveCodexClient(clientId) { const client = codexClients.get(clientId); return !!client && now() - client.seenAt < 10000; }
   function liveView(v) { return v && now() - v.seenAt < 10000 && v.supported && SUPPORTED_VERSIONS.has(v.version); }
   function withTopic(item) {
     const title = data.topicAssignments[item.id];
@@ -102,7 +118,8 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     const items = Object.values(data.cache).filter(item => keyOf(item.externalSource) === sourceKey).map(withTopic).sort((a, b) => a.externalSource.eventSeq - b.externalSource.eventSeq || (a.externalSource.selection?.start ?? 0) - (b.externalSource.selection?.start ?? 0) || a.savedAt.localeCompare(b.savedAt));
     const pending = Object.values(data.outbox).filter(p => keyOf(p.capture.externalSource) === sourceKey).map(p => ({ requestId: p.capture.requestId, title: p.capture.title, text: p.capture.text, externalSource: p.capture.externalSource, error: p.error || null, saving: inFlight.has(p.capture.requestId) }));
     const view = active && views.get(active.viewId);
-    return { active, items, pending, connected: !!liveView(view), supported: !!view && view.supported && SUPPORTED_VERSIONS.has(view.version), libraryError, persistenceError, pinned: Object.keys(data.pinned), read: items.filter(item => data.readItems[item.id] === true).map(item => item.id), mode: data.mode };
+    const codexActive = active?.provider === 'codex';
+    return { active, items, pending, connected: codexActive ? liveCodexClient(active.clientId) : !!liveView(view), supported: codexActive || (!!view && view.supported && SUPPORTED_VERSIONS.has(view.version)), libraryError, persistenceError, pinned: Object.keys(data.pinned), read: items.filter(item => data.readItems[item.id] === true).map(item => item.id), mode: data.mode };
   }
   const changed = () => events.emit('change', snapshot());
   async function refresh() {
@@ -152,12 +169,15 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     if ((previous && focusEpoch < previous.focusEpoch) || (data.active?.viewId === view.viewId && focusEpoch < (data.active.focusEpoch || 0))) { trace(false, 'stale-focus-epoch'); return { accepted: false, contextProtocol: 2 }; }
     view.focusedAt = focusEpoch;
     views.set(view.viewId, view);
-    const newFocus = focusEpoch > (data.active?.focusEpoch || 0);
+    // A Codex tool chooses a source, not OS focus. Keep the last Harness epoch
+    // only as an ordering barrier so its unchanged heartbeat cannot steal back.
+    const priorEpoch = data.active?.provider === 'codex' ? data.active.harnessFocusEpoch || 0 : data.active?.focusEpoch || 0;
+    const newFocus = focusEpoch > priorEpoch;
     const currentView = data.active?.viewId === view.viewId;
     if (newFocus || currentView) {
       // A blur never creates a focus epoch. A newer real epoch can arrive after
       // that window already blurred while transport was busy; retain that focus.
-      const next = { viewId: view.viewId, instanceId: view.instanceId, sessionId: view.sessionId, sessionTitle: view.sessionTitle, focusEpoch };
+      const next = { provider: 'deepseek-harness', viewId: view.viewId, instanceId: view.instanceId, sessionId: view.sessionId, sessionTitle: view.sessionTitle, focusEpoch };
       const switched = keyOf(next) !== keyOf(data.active);
       const different = JSON.stringify(next) !== JSON.stringify(data.active);
       data.active = next;
@@ -167,6 +187,40 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
       if (switched || (!refreshPromise && !previous)) void refresh();
     } else trace(true, 'background-view');
     return { accepted: true, contextProtocol: 2 };
+  }
+  function codexClient(v) {
+    if (!object(v) || typeof v.clientId !== 'string' || !CLIENT_ID.test(v.clientId)) throw fail('INVALID_ARGUMENT', 'Codex 客户端标识无效');
+    return v.clientId.toLowerCase();
+  }
+  function codexHeartbeat(v) {
+    const clientId = codexClient(v), previous = codexClients.get(clientId);
+    if (Object.keys(v).some(key => key !== 'clientId')) throw fail('INVALID_ARGUMENT', 'Codex 心跳包含不支持的字段');
+    codexClients.set(clientId, { ...previous, seenAt: now() });
+    changed();
+    return { accepted: true };
+  }
+  async function codexContext(v) {
+    const clientId = codexClient(v);
+    if (Object.keys(v).some(key => !['clientId','instanceId','sessionId','sessionTitle'].includes(key))) throw fail('INVALID_ARGUMENT', 'Codex 来源包含不支持的字段');
+    if (!liveCodexClient(clientId)) throw fail('CODEX_UNAVAILABLE', 'Codex 本机连接已断开，请重新连接后重试');
+    const instanceId = string(v.instanceId, 'instanceId');
+    if (!CODEX_INSTANCE.test(instanceId)) throw fail('INVALID_SOURCE', 'Codex 实例标识无效');
+    const sessionId = codexThreadId(v.sessionId), sessionTitle = string(v.sessionTitle, 'sessionTitle', 500, true);
+    const client = codexClients.get(clientId);
+    if (client.instanceId && client.instanceId !== instanceId) throw fail('INVALID_SOURCE', 'Codex 客户端来源发生变化');
+    const harnessFocusEpoch = [...views.values()].reduce((epoch, view) => Math.max(epoch, view.focusEpoch), Math.max(data.active?.harnessFocusEpoch || 0, data.active?.focusEpoch || 0));
+    const next = { provider: 'codex', clientId, viewId: `codex:${clientId}`, instanceId, sessionId, sessionTitle, harnessFocusEpoch };
+    const switched = keyOf(next) !== keyOf(data.active);
+    const previous = data.active;
+    data.active = next;
+    if (JSON.stringify(next) !== JSON.stringify(previous)) {
+      generation++;
+      try { await persist(); } catch (error) { data.active = previous; changed(); throw error; }
+    }
+    client.instanceId = instanceId;
+    changed();
+    if (switched) await refresh();
+    return { accepted: true, provider: 'codex' };
   }
   async function deliver(capture) {
     const id = capture.requestId, hash = digest(capture);
@@ -183,7 +237,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
         const item = itemOf(result.item); if (acceptRevision(result)) data.cache[item.id] = item;
         if (item.id !== receipt.itemId) throw fail('INVALID_RESPONSE', '收藏回执身份不一致');
         if (manualTopic !== undefined) data.topicAssignments[item.id] = manualTopic;
-        await persist(); changed(); return { requestId: id, status: 'saved', item: withTopic(item) };
+        await persist(); changed(); return { requestId: id, status: 'saved', duplicate: true, item: withTopic(item) };
       }
       data.outbox[id] = { capture, digest: hash, error: null };
       await persist(); changed();
@@ -203,7 +257,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
         // This is a transient acknowledgement, not part of the recoverable save.
         // Receipts/replays and list refreshes deliberately do not emit it.
         try { events.emit('captured', { requestId: id, itemId: item.id, sourceIdentity: { instanceId: capture.externalSource.instanceId, sessionId: capture.externalSource.sessionId } }); } catch {}
-        return { requestId: id, status: 'saved', item: withTopic(item) };
+        return { requestId: id, status: 'saved', duplicate: result.duplicate === true, item: withTopic(item) };
       } catch (e) {
         // Even when the server committed but its reply was lost, retry uses the same request ID.
         if (!data.outbox[id]) data.outbox[id] = { capture, digest: hash };
@@ -281,13 +335,13 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     if (v.ok) n.resolve({ ok: true }); else n.reject(fail(typeof v.code === 'string' ? v.code.slice(0, 100) : 'SOURCE_UNAVAILABLE', typeof v.message === 'string' ? v.message.slice(0, 500) : '未能定位原文；收藏内容仍保留'));
     return { accepted: true };
   }
-  function connectionStatus(){const live=[...views.values()].filter(liveView);return {protocol:1,connected:live.length>0,hostVersion:live[0]?.version||null};}
+  function connectionStatus(){const live=[...views.values()].filter(liveView), codexConnected=[...codexClients.keys()].some(liveCodexClient), activeCodex=data.active?.provider==='codex';return {protocol:1,connected:live.length>0,hostVersion:live[0]?.version||null,codex:{connected:codexConnected,active:activeCodex&&liveCodexClient(data.active.clientId),sessionId:activeCodex?data.active.sessionId:null}};}
   async function close() {
     closed = true;
     for (const n of navigations.values()) { clearTimeout(n.timeout); n.reject(fail('CLOSED', '浮窗已退出')); }
     navigations.clear(); await Promise.allSettled([...inFlight.values()]); await writes;
   }
-  return { events, handlers: { publishContext, capture, pollCommands, navigationResult, connectionStatus }, snapshot, refresh, retry, getItem, markRead, setReview, setPin, setMode, requestNavigation, pinnedLayouts: () => structuredClone(data.pinned), close };
+  return { events, handlers: { publishContext, codexHeartbeat, codexContext, capture, pollCommands, navigationResult, connectionStatus }, snapshot, refresh, retry, getItem, markRead, setReview, setPin, setMode, requestNavigation, pinnedLayouts: () => structuredClone(data.pinned), close };
 }
 
-module.exports = { createRecallService, captureOf, sourceOf, itemOf, VERSION, SUPPORTED_VERSIONS };
+module.exports = { createRecallService, captureOf, sourceOf, itemOf, codexThreadId, VERSION, SUPPORTED_VERSIONS };

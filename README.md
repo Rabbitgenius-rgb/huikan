@@ -2,13 +2,14 @@
 
 **把 AI 对话中值得留下的内容，变成以后找得到、看得懂、能继续使用的资料。**
 
-回看是一个以本机保存为核心的 AI 对话留存与回看工具。当前重点是 DeepSeek Harness 接入，后续推进 Codex 适配与用户可定制组件。
+回看是一个以本机保存为核心的 AI 对话留存与回看工具。当前支持 DeepSeek Harness 插件和 Codex 本机 MCP 接入，后续推进用户可定制组件。
 
 ![回看工作台示例](docs/workbench.png)
 
 ## 已有能力
 
 - 从支持的 DeepSeek Harness 对话中主动保存整条消息或选中文字，保留原文和来源。
+- 在 Codex 中通过回看工具保存明确指定的原文、按线程查看摘录，并打开对应主题浮窗；设置中可一键添加本机 MCP 配置。
 - 按来源线程浏览，搜索摘录，记录已读状态。
 - 重复内容去重、失败重试、归档与恢复。
 - 按主题浏览的 Electron 浮窗、完整原文预览和黄色便签，以及来源回跳的插件接口。Windows 11 22H2 以上支持系统 Acrylic 毛玻璃。
@@ -16,9 +17,9 @@
 - 主动保存后在本机识别代码、链接、待办清单和长文，推荐对应组件。
 - 保存与内容特征识别通过本机完成，不需要额外的模型请求。
 
-打开浮窗只读取自定主题和本机已有的主题缓存；尚未归类的摘录集中显示在“待整理内容”。点击“整理主题”并确认后，才会使用 Harness 配置的模型服务处理待整理摘录。该操作会把这些摘录发送给模型服务。公开版默认使用 Electron 浮窗；本机历史原生浮窗的独立二进制与宿主 Harness 运行时不包含在仓库中。
+打开浮窗只读取自定主题和本机已有的主题缓存；尚未归类的摘录集中显示在“待整理内容”。点击“整理主题”并确认后，才会使用 Harness 配置的模型服务处理待整理摘录。该操作会把这些摘录发送给模型服务。Codex 来源不发送给 Harness 模型，使用自定主题或“待整理内容”。公开版默认使用 Electron 浮窗；本机历史原生浮窗的独立二进制与宿主 Harness 运行时不包含在仓库中。
 
-**阶段：早期开发版。** 提供 macOS Apple Silicon 与 Windows x64 预览构建；Windows 版尚未做代码签名，Mac 版尚无 Developer ID 签名与公证。内容识别使用本机规则，完整 Codex 留存适配、开放组件接口与社区组件分享属于后续计划，详见 [发展计划](docs/ROADMAP.md)。
+**阶段：早期开发版。** 提供 macOS Apple Silicon 与 Windows x64 预览构建；Windows 版尚未做代码签名，Mac 版尚无 Developer ID 签名与公证。内容识别使用本机规则，Codex 前台标签页自动跟随、开放组件接口与社区组件分享属于后续计划，详见 [发展计划](docs/ROADMAP.md)。
 
 ## 下载安装
 
@@ -84,6 +85,20 @@ npm start
 
 开发启动器把桌面资料、浮窗缓存与桥接分别放在仓库 `.local/` 下，默认与已有安装版资料隔离。它们都被 Git 忽略，不应上传。
 
+## 接入 Codex
+
+0.3.0 起，桌面版内置本机 MCP 服务，无需额外安装 Node.js 或配置 OpenAI API Key。
+
+1. 打开回看，进入 **连接与识别设置 → 连接 Codex**，点击 **连接 Codex**。
+2. 在 Codex 的 MCP 设置中重新加载连接，或重新打开 Codex。回看收到实际 MCP 握手后才显示“已连接”。
+3. 在 Codex 聊天中说“把这段留作回看”，明确要保存的原文；也可以指定主题。需要查看已存内容时，说“打开这场对话的回看”。
+
+配置只添加回看自己的 MCP 项，其他服务器和已有设置保留；遇到未知的同名配置会停止，不覆盖它。回看应用移动位置后，可在设置中重新配置路径。
+
+来源需要当前聊天的技术 thread ID，由调用方明确提供。当前 Codex 执行环境中的 `CODEX_THREAD_ID` 可作兼容入口，但不是官方保证的稳定接口；缺失时需提供当前聊天的 `codex://threads/...` 链接，不会通过标题、最近聊天或读取会话文件猜测。浮窗在明确调用回看工具后切换，不随前台标签页自动切换。回跳打开原聊天，尚不定位具体消息或选区。
+
+原文保存、自定主题、读取和浮窗切换均在本机完成。不同来源保存相同正文时仍沿用首次保存的条目和来源，工具会报告重复。开发者可使用仓库的 [Codex 插件包](codex-plugin/README.md)。
+
 ## 接入 DeepSeek Harness
 
 当前适配 `0.2.0-rc.2`、`0.2.1-rc.3`，其他版本会明确拒绝留存。构建、打包和宿主配置说明见 [插件文档](harness-plugin/README.md)。
@@ -121,7 +136,7 @@ macOS 首次使用：
 npm run package:win
 ```
 
-输出为仓库旁 `huikan-release/windows/Huikan-0.2.4-windows-x64-setup.exe`。GitHub 仓库的 **Actions → Build Windows → Run workflow** 会在 Windows 环境中运行测试、构建 NSIS 安装程序、实际安装，并启动安装后的程序检查摘录保存与重启恢复；另外安装固定版本的官方 Harness，检查初始化、自动安装和插件连接；检查成功后在运行附件中提供安装程序和配套插件。工作流不会自动发布新的 Release。
+输出为仓库旁 `huikan-release/windows/Huikan-0.3.0-windows-x64-setup.exe`。GitHub 仓库的 **Actions → Build Windows → Run workflow** 会在 Windows 环境中运行测试、构建 NSIS 安装程序、实际安装，并启动安装后的程序检查摘录保存与重启恢复；另外安装固定版本的官方 Harness，检查初始化、自动安装和插件连接；检查成功后在运行附件中提供安装程序和配套插件。工作流不会自动发布新的 Release。
 
 ## 构建 macOS 预览包
 
@@ -131,7 +146,7 @@ npm run package:win
 npm run package:mac
 ```
 
-输出为仓库旁 `huikan-release/Huikan-0.2.4-mac-arm64.zip`。解压后将“回看.app”放到应用目录即可试用。Mac 构建脚本当前仅面向 Apple Silicon，使用本机临时签名，尚未完成干净机器安装验证、Developer ID 签名与 Apple 公证，不应视作正式稳定发行。
+输出为仓库旁 `huikan-release/Huikan-0.3.0-mac-arm64.zip`。解压后将“回看.app”放到应用目录即可试用。Mac 构建脚本当前仅面向 Apple Silicon，使用本机临时签名，尚未完成干净机器安装验证、Developer ID 签名与 Apple 公证，不应视作正式稳定发行。
 
 ## 正式签名与 Apple 公证
 
@@ -165,6 +180,7 @@ npm run build
 | `ui/` | React 回看工作台与兼容存储模块 |
 | `desktop/` | Electron 桌面入口与本机桥接 |
 | `harness-plugin/` | Harness Host / Client 插件 |
+| `codex-plugin/` | Codex 本机 MCP 与明确留存工作流 |
 | `companion/` | Electron 浮窗与便签 |
 | `shared/`、`core/` | 本机通信和来源协议 |
 | `tests/` | 保存、来源、恢复与退出回归检查 |

@@ -1,6 +1,6 @@
 {
   "name": "mengcang-recall-companion",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "description": "Isolated Harness recall companion for Mengcang",
   "private": true,
   "main": "src/main.js",

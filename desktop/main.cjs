@@ -8,6 +8,8 @@ const {createRendererQuitGate}=require('./renderer-quit.cjs');
 const {createPreferences}=require('./app-preferences.cjs');
 const {createConnectionManager}=require('./connection-manager.cjs');
 const {inspectHarness}=require('./harness-detection.cjs');
+const {createCodexSetup}=require('./codex-setup.cjs');
+const {callPrivate}=require('../shared/private-rpc.cjs');
 const pluginManifest=require('../harness-plugin/package.json');
 app.setName('回看工作台');
 if(process.env.HUIKAN_DATA_HOME){if(!path.isAbsolute(process.env.HUIKAN_DATA_HOME))throw Error('资料目录必须是绝对路径');app.setPath('userData',process.env.HUIKAN_DATA_HOME);}
@@ -19,7 +21,7 @@ let win,bridge,presentation,preferences,connection,connectionTimer,drained=false
 const pending=new Set();
 const emit=event=>{if(win&&!win.isDestroyed())win.webContents.send('mengcang:event',event);};
 const gate=createRendererQuitGate({send:id=>{if(!win||win.isDestroyed())return false;quitId=id;emit({type:'prepareQuit',quitId:id});return true;}});
-function handle(name,fn){ipcMain.handle(`mengcang:${name}`,async(event,...args)=>{try{if(!trustedFrame(event))throw Error('此页面无权访问回看');if(quitting&&['settingsSet','connectionInstall','connectionChoose','connectionRetry','connectionOpen'].includes(name))throw Error('正在保存并退出，请稍后重试。');const task=Promise.resolve().then(()=>fn(...args));if(['settingsSet','connectionInstall'].includes(name))pending.add(task);try{return {ok:true,data:await task};}finally{pending.delete(task);}}catch(error){return {ok:false,error:{code:error.code||'REQUEST_FAILED',message:error.message}};}});}
+function handle(name,fn){ipcMain.handle(`mengcang:${name}`,async(event,...args)=>{try{if(!trustedFrame(event))throw Error('此页面无权访问回看');if(quitting&&['settingsSet','connectionInstall','connectionChoose','connectionRetry','connectionOpen','codexInstall'].includes(name))throw Error('正在保存并退出，请稍后重试。');const task=Promise.resolve().then(()=>fn(...args));if(['settingsSet','connectionInstall','codexInstall'].includes(name))pending.add(task);try{return {ok:true,data:await task};}finally{pending.delete(task);}}catch(error){return {ok:false,error:{code:error.code||'REQUEST_FAILED',message:error.message}};}});}
 async function quit(){
  if(quitTask)return quitTask;
  quitting=true;quitId=null;
@@ -58,6 +60,8 @@ if(!app.requestSingleInstanceLock()){app.quit();}else{
   handle('connectionChoose',async()=>{if(!['darwin','win32'].includes(process.platform))throw Error('此平台暂不支持自动识别 Harness。');const result=await dialog.showOpenDialog(win,{title:'选择 DeepSeek Harness',properties:['openFile'],filters:[process.platform==='win32'?{name:'Harness 应用程序',extensions:['exe']}:{name:'macOS 应用',extensions:['app']}]});if(result.canceled)return {};const target=result.filePaths[0];if(!await inspectHarness(target))throw Error('所选应用不是可识别的 DeepSeek Harness。');await fs.writeFile(selectedFile,JSON.stringify({selectedPath:target}),{mode:0o600});await connection.selectApp(target);return connection.retry();});
   handle('connectionOpen',async()=>{const {harness,state,plugin}=await connection.status();if(state==='installing')throw Error('插件正在安装，请完成后再打开 Harness。');if(process.platform==='win32'&&!['needs-initialization','current','newer','installed','disabled','development'].includes(plugin?.setup))throw Error('请先完成插件安装，再打开 Harness。');if(!harness?.installed||!harness.supported)throw Error('请先选择已适配的 DeepSeek Harness。');const error=await shell.openPath(process.platform==='win32'?harness.cli.command:harness.path);if(error)throw Error('Harness 未能打开，请从开始菜单打开后重新检测。');return {message:'已请求打开 Harness；连接状态会在插件握手后更新。'};});
   handle('connectionInstall',()=>connection.install(path.join(__dirname,'plugin/recall-plugin.tgz')));
+  const codexSetup=createCodexSetup({command:process.execPath,args:app.isPackaged?['--huikan-codex-mcp']:[app.getAppPath(),'--huikan-codex-mcp'],getConnectionStatus:()=>callPrivate({directory:bridgeDirectory,service:'sticky',method:'connectionStatus',params:{},timeoutMs:1500}).catch(()=>null)});
+  handle('codexStatus',()=>codexSetup.status());handle('codexInstall',()=>codexSetup.install());
   await connection.start();
   if(process.platform==='win32'){connectionTimer=setInterval(()=>{if(!quitting)void connection.reconcile().catch(()=>{});},5000);connectionTimer.unref();}
   win.on('close',event=>{if(!drained){event.preventDefault();void quit();}});

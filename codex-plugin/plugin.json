@@ -1,0 +1,22 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "huikan-recall",
+  "version": "0.3.0",
+  "description": "将明确选定的 Codex 内容保存到本机回看工作台。",
+  "homepage": "https://github.com/Rabbitgenius-rgb/huikan",
+  "repository": "https://github.com/Rabbitgenius-rgb/huikan",
+  "license": "MIT",
+  "author": { "name": "Huikan contributors" },
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "回看 · Huikan",
+        "shortDescription": "把指定的 Codex 原文留作回看。",
+        "longDescription": "通过本机 MCP 保存用户明确指定的摘录，保留对话来源、自定主题和完整原文。需要本机运行回看；不会扫描聊天记录，来源由当前调用明确提供。",
+        "developerName": "Huikan contributors",
+        "category": "Productivity",
+        "capabilities": []
+      }
+    }
+  }
+}

@@ -1,6 +1,9 @@
 // Shared, dependency-free validation for the companion and the native library.
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CODEX_THREAD = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|thr_[A-Za-z0-9_-]{1,252})$/i;
+const CODEX_INSTANCE = /^codex:[a-f0-9]{24}$/;
+const CODEX_MESSAGE = /^capture-([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
 const badUnicode = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 export function recallError(code, message) { const error = new Error(message); error.code = code; return error; }
 const fail = message => { throw recallError('INVALID_RECALL', message); };
@@ -13,8 +16,9 @@ function identity(value, label) { const result = text(value, 256, label); if (/[
 function offset(value) { if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) fail('来源位置无效'); return value; }
 export function normalizeRecallSource(value) {
   shape(value, ['version','provider','instanceId','sessionId','messageId','eventSeq','turn','sessionTitle','selection']);
-  if (value.version !== 1 || value.provider !== 'deepseek-harness') fail('不支持的回看来源版本');
-  const source = {version:1,provider:'deepseek-harness',instanceId:identity(value.instanceId,'来源实例'),sessionId:identity(value.sessionId,'来源聊天'),messageId:identity(value.messageId,'来源消息'),eventSeq:offset(value.eventSeq),turn:offset(value.turn),sessionTitle:text(value.sessionTitle,500,'聊天标题',true)};
+  if (value.version !== 1 || !['deepseek-harness','codex'].includes(value.provider)) fail('不支持的回看来源版本');
+  const source = {version:1,provider:value.provider,instanceId:identity(value.instanceId,'来源实例'),sessionId:identity(value.sessionId,'来源聊天'),messageId:identity(value.messageId,'来源消息'),eventSeq:offset(value.eventSeq),turn:offset(value.turn),sessionTitle:text(value.sessionTitle,500,'聊天标题',true)};
+  if (source.provider === 'codex' && (!CODEX_INSTANCE.test(source.instanceId) || !CODEX_THREAD.test(source.sessionId) || !CODEX_MESSAGE.test(source.messageId) || source.eventSeq !== 0 || source.turn !== 0 || value.selection !== undefined)) fail('Codex 来源必须指向有效线程，且不能伪造消息或选区位置');
   if (value.selection !== undefined) {
     const selected = value.selection;
     shape(selected, ['text','start','end','prefix','suffix']);
@@ -28,6 +32,7 @@ export function normalizeRecallCapture(value) {
   shape(value, ['requestId','text','title','externalSource']);
   if (typeof value.requestId !== 'string' || !UUID.test(value.requestId)) fail('收藏请求标识必须是 UUID');
   const result = {requestId:value.requestId.toLowerCase(),text:text(value.text,200000,'回看原文'),title:text(value.title,500,'回看标题'),externalSource:normalizeRecallSource(value.externalSource)};
+  if (result.externalSource.provider === 'codex' && result.externalSource.messageId.toLowerCase() !== `capture-${result.requestId}`) fail('Codex 保存请求与来源标识不一致');
   if (result.externalSource.selection && result.externalSource.selection.text !== result.text) fail('收藏原文必须与选中文字一致');
   return result;
 }
