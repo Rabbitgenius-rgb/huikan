@@ -132,3 +132,22 @@ test('unchanged Harness heartbeats cannot override an explicitly selected Codex 
   assert.equal(f.service.snapshot().active.provider, 'deepseek-harness');
   assert.equal(f.service.handlers.connectionStatus().connected, true);
 });
+
+
+test('Harness captures retain the original strict RPC output shape for new saves and replays', async t => {
+  const f = await fixture(t);
+  const input = request('Harness 协议回归的独立原文');
+  input.externalSource = { version: 1, provider: 'deepseek-harness', instanceId: 'harness-legacy-shape', sessionId: 'original-thread',
+    messageId: 'message-one', eventSeq: 1, turn: 1, sessionTitle: 'Harness 原有输出协议' };
+  const first = await f.service.handlers.capture(input);
+  const replay = await f.service.handlers.capture(input);
+  for (const value of [first, replay]) {
+    assert.equal(value.status, 'saved');
+    assert.deepEqual(Object.keys(value).sort(), ['item', 'requestId', 'status']);
+    assert.equal(Object.hasOwn(value, 'duplicate'), false);
+  }
+  assert.equal(replay.item.id, first.item.id);
+  const codex = request('Codex 协议保留 duplicate');
+  assert.equal((await f.service.handlers.capture(codex)).duplicate, false);
+  assert.equal((await f.service.handlers.capture(codex)).duplicate, true);
+});

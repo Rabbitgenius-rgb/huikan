@@ -237,7 +237,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
         const item = itemOf(result.item); if (acceptRevision(result)) data.cache[item.id] = item;
         if (item.id !== receipt.itemId) throw fail('INVALID_RESPONSE', '收藏回执身份不一致');
         if (manualTopic !== undefined) data.topicAssignments[item.id] = manualTopic;
-        await persist(); changed(); return { requestId: id, status: 'saved', duplicate: true, item: withTopic(item) };
+        await persist(); changed(); return { requestId: id, status: 'saved', ...(capture.externalSource.provider === 'codex' ? { duplicate: true } : {}), item: withTopic(item) };
       }
       data.outbox[id] = { capture, digest: hash, error: null };
       await persist(); changed();
@@ -257,7 +257,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
         // This is a transient acknowledgement, not part of the recoverable save.
         // Receipts/replays and list refreshes deliberately do not emit it.
         try { events.emit('captured', { requestId: id, itemId: item.id, sourceIdentity: { instanceId: capture.externalSource.instanceId, sessionId: capture.externalSource.sessionId } }); } catch {}
-        return { requestId: id, status: 'saved', duplicate: result.duplicate === true, item: withTopic(item) };
+        return { requestId: id, status: 'saved', ...(capture.externalSource.provider === 'codex' ? { duplicate: result.duplicate === true } : {}), item: withTopic(item) };
       } catch (e) {
         // Even when the server committed but its reply was lost, retry uses the same request ID.
         if (!data.outbox[id]) data.outbox[id] = { capture, digest: hash };

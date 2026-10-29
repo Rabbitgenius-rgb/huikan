@@ -56,6 +56,15 @@ async function main() {
     });
   }
   const tool = async (name, args = {}) => (await request('tools/call', { name, arguments: args })).result;
+  async function save(args, stage) {
+    let value = (await tool('save_excerpt', args)).structuredContent;
+    if (value?.status === 'pending' && ['SERVICE_UNAVAILABLE', 'LIBRARY_NOT_READY', 'RECALL_TIMEOUT', 'CODEX_UNAVAILABLE', 'ETIMEDOUT', 'ECONNRESET', 'EPIPE'].includes(value.error?.code)) {
+      console.log(JSON.stringify({ stage, retrying: true, code: value.error.code }));
+      await sleep(1000);
+      value = (await tool('save_excerpt', { ...args, requestId: value.requestId })).structuredContent;
+    }
+    savedResult(value, stage); return value;
+  }
   function savedResult(value, stage) {
     assert.equal(value?.status, 'saved', JSON.stringify({ stage, error: value?.error || null }));
   }
@@ -85,7 +94,7 @@ async function main() {
     const a = '10000000-0000-4000-8000-000000000001', b = '10000000-0000-4000-8000-000000000002';
     const input = { threadId: a, title: 'Codex 安装包检查', threadTitle: '合成 Codex 线程 A', topic: '本机留存', text: '仅用于适配检查。\n\n```js\nconst source = "Codex";\n```\n\n原文逐字保留。' };
     assert.equal((await tool('save_excerpt', { title: '缺少来源', text: '不能冒认当前对话' })).isError, true);
-    const saved = (await tool('save_excerpt', input)).structuredContent;
+    const saved = await save(input, 'first-save');
     savedResult(saved, 'first-save'); assert.equal(saved.inCurrentThread, true);
     assert.equal(saved.item.text, input.text); assert.equal(saved.item.externalSource.provider, 'codex');
     assert.equal(saved.item.externalSource.sessionId, a); assert.equal(saved.item.externalSource.turn, 0);
@@ -94,7 +103,7 @@ async function main() {
     assert.equal(repeated.item.id, saved.item.id); assert.equal(repeated.duplicate, true);
     assert.equal((await tool('list_recalls', { threadId: a })).structuredContent.items.length, 1);
     assert.equal((await tool('list_recalls', { threadId: b })).structuredContent.items.length, 0);
-    const another = (await tool('save_excerpt', { threadId: b, title: '线程 B 的摘录', text: '这是另一场对话的独立内容。' })).structuredContent;
+    const another = await save({ threadId: b, title: '线程 B 的摘录', text: '这是另一场对话的独立内容。' }, 'second-thread-save');
     savedResult(another, 'second-thread-save'); assert.equal(another.item.externalSource.sessionId, b);
     const duplicate = (await tool('save_excerpt', { ...input, threadId: b })).structuredContent;
     assert.equal(duplicate.duplicate, true); assert.equal(duplicate.inCurrentThread, false); assert.equal(duplicate.existingSource.sessionId, a);
