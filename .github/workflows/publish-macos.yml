@@ -1,0 +1,87 @@
+name: Build and publish macOS preview
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing public preview release
+        required: true
+        type: string
+      revision:
+        description: Exact verified release commit
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  macos-preview:
+    runs-on: macos-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      HUIKAN_RELEASE_TAG: ${{ inputs.tag }}
+      HUIKAN_RELEASE_REVISION: ${{ inputs.revision }}
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - name: Validate release target
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          tag, revision = os.environ['HUIKAN_RELEASE_TAG'], os.environ['HUIKAN_RELEASE_REVISION']
+          assert re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', tag)
+          assert re.fullmatch(r'[a-f0-9]{40}', revision)
+          release = json.loads(subprocess.check_output(['gh', 'release', 'view', tag, '--json', 'isDraft,targetCommitish'], text=True))
+          assert not release['isDraft'] and release['targetCommitish'] == revision
+          PY
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.revision }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            ui/package-lock.json
+      - run: npm ci
+      - run: npm --prefix ui ci
+      - run: npm test
+      - run: npm run package:mac
+      - name: Publish the matching unsigned preview
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, plistlib, subprocess, zipfile
+          tag, revision = os.environ['HUIKAN_RELEASE_TAG'], os.environ['HUIKAN_RELEASE_REVISION']
+          version = json.loads(pathlib.Path('package.json').read_text())['version']
+          assert tag == 'v' + version
+          filename = f'Huikan-{version}-mac-arm64.zip'
+          archive = pathlib.Path('../huikan-release') / filename
+          with zipfile.ZipFile(archive) as bundle:
+              assert bundle.testzip() is None
+              info = plistlib.loads(bundle.read('回看.app/Contents/Info.plist'))
+              assert info['CFBundleIdentifier'] == 'io.huikan.desktop'
+              assert info['CFBundleShortVersionString'] == version
+              assert '回看.app/Contents/Resources/app/codex-mcp.cjs' in bundle.namelist()
+              assert not any(part in {'.local', 'candidate-config.json', 'recall-state.json', '.env'} for name in bundle.namelist() for part in pathlib.PurePosixPath(name).parts)
+          release = json.loads(subprocess.check_output(['gh', 'release', 'view', tag, '--json', 'isDraft,targetCommitish,assets'], text=True))
+          assert not release['isDraft'] and release['targetCommitish'] == revision
+          existing = next((asset for asset in release['assets'] if asset['name'] == filename), None)
+          if existing and existing['state'] == 'uploaded' and existing['size'] > 0:
+              print('The public Mac asset already exists; preserving it for download verification.')
+          else:
+              if existing:
+                  subprocess.run(['gh', 'release', 'delete-asset', tag, filename, '--yes'], check=True)
+              subprocess.run(['gh', 'release', 'upload', tag, str(archive)], check=True)
+              print(f'Published {filename} from {revision}')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: huikan-macos-arm64
+          path: ../huikan-release/Huikan-*-mac-arm64.zip
+          if-no-files-found: error
+          retention-days: 14
