@@ -83,9 +83,3 @@ jobs:
               subprocess.run(['gh', 'release', 'upload', tag, str(archive)], check=True)
               print(f'Published {filename} from {revision}')
           PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: huikan-macos-arm64
-          path: ../huikan-release/Huikan-*-mac-arm64.zip
-          if-no-files-found: error
-          retention-days: 14

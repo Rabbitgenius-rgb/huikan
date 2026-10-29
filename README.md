@@ -23,19 +23,19 @@
 
 ## 下载安装
 
-[**下载 Windows 10/11 64 位安装程序（0.2.4）**](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.2.4/Huikan-0.2.4-windows-x64-setup.exe) · [Windows 发行说明](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.2.4)
+[**下载 Windows 10/11 64 位安装程序（0.3.0）**](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.3.0/Huikan-0.3.0-windows-x64-setup.exe) · [发行说明](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.3.0)
 
 双击安装程序，按向导安装后打开“回看”。无需另装 Node.js；工作台和浮窗一起安装。Windows 安装包未做代码签名，首次运行可能显示“未知发布者”或 SmartScreen 提示；请核对下载来源为本项目的 GitHub 发行页。组织策略禁止运行未签名程序时，需要管理员按其策略处理。
 
-Windows 0.2.4 已在 GitHub Windows Server 2025 构建环境实际安装：工作台与浮窗启动、中文资料路径、示例原文保存、重复请求去重和重启恢复均通过。使用官方 Harness 0.2.1-rc.3 的额外联调也通过了安装记录自动发现、插件自动安装、重复检测不重复安装、真实客户端心跳及正常退出。摘录测试通过真实宿主插件接口发送合成内容，尚未覆盖真实对话界面的选中文字操作及全部来源回跳。
+Windows 0.3.0 已在 GitHub Windows Server 2025 构建环境实际安装：工作台与浮窗启动、中文资料路径、示例原文保存、重复请求去重和重启恢复均通过。使用官方 Harness 0.2.1-rc.3 的额外联调也通过了安装记录自动发现、插件自动安装、重复检测不重复安装、真实客户端心跳及正常退出。摘录测试通过真实宿主插件接口发送合成内容，尚未覆盖真实对话界面的选中文字操作及全部来源回跳。额外的 Codex 安装测试通过了内置 MCP 运行环境、配置安装与握手、精确保存、线程隔离、重试和重启恢复；真实 Harness 也通过了跨 Codex/Harness 双向去重保留首次来源的检查。
 
-0.2.4 的额外原生窗口检查通过了主题首页、跨轮次主题归组、完整原文、悬停与点击打开、主次窗焦点切换、隐藏重开、贴出便签、切换对话关闭旧详情、Acrylic 系统属性读回和正常退出。该 Server 环境的实际桌面截图呈现实色，因此不能将它作为普通 Windows 11 电脑最终模糊质感的验收；系统材质会受透明度设置、系统版本和运行环境影响。[构建与安装检查](https://github.com/Rabbitgenius-rgb/huikan/actions/runs/40707240752)。
+0.3.0 的额外原生窗口检查通过了主题首页、跨轮次主题归组、完整原文、悬停与点击打开、主次窗焦点切换、隐藏重开、贴出便签、切换对话关闭旧详情、Acrylic 系统属性读回和正常退出。该 Server 环境的实际桌面截图呈现实色，因此不能将它作为普通 Windows 11 电脑最终模糊质感的验收；系统材质会受透明度设置、系统版本和运行环境影响。[构建与安装检查](https://github.com/Rabbitgenius-rgb/huikan/actions/runs/40909394027)。
 
 Windows 版内置回看插件，启动时自动识别支持的官方 Harness。已初始化且完全退出的宿主会自动安装插件；安装后打开 Harness 即可连接。无需手动导入 `.tgz`，也无需额外安装 Node.js。首次安装可能需要联网下载宿主插件依赖。
 
-[**下载 macOS Apple Silicon 预览包（0.2.0）**](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.2.0/Huikan-0.2.0-mac-arm64.zip) · [发行说明与全部附件](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.2.0)
+[**下载 macOS Apple Silicon 预览包（0.3.0）**](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.3.0/Huikan-0.3.0-mac-arm64.zip) · [发行说明与全部附件](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.3.0)
 
-此历史 Mac 预览包尚未包含 0.2.4 的主题界面更新。适用于 M 系列芯片 Mac。下载 ZIP 后解压，将“回看.app”移到“应用程序”目录，再打开使用；配套 Harness 插件已内置，无需另行下载源码或安装 Node.js。首次连接步骤见下文“接入 DeepSeek Harness”。
+适用于 M 系列芯片 Mac，已包含主题浮窗与 Codex 本机 MCP 接入。下载 ZIP 后解压，将“回看.app”移到“应用程序”目录，再打开使用；配套 Harness 插件已内置，无需另行下载源码或安装 Node.js。首次连接步骤见下文“接入 Codex”或“接入 DeepSeek Harness”。
 
 当前为开发预览包，尚无 Developer ID 签名与 Apple 公证，macOS 可能阻止打开；尚未完成干净机器安装验证。Intel Mac 与 Windows ARM64 原生安装包暂未提供。
 
@@ -49,7 +49,7 @@ Windows 版内置回看插件，启动时自动识别支持的官方 Harness。�
 
 这是针对该应用的一次确认，具体操作参见 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。
 
-已对 GitHub 公开下载的原始 ZIP 进行本机复查：独立资料目录中工作台和浮窗启动、示例摘录保存、重启后原文恢复均通过。这不等同于其他 Mac 的首次安装验证。
+已下载 GitHub 公开的 0.3.0 ZIP 进行本机复查：临时签名完整性、独立资料目录中的工作台与 MCP 启动、实际握手、精确原文保存、线程隔离、去重和重启恢复均通过。这不等同于其他 Mac 的首次安装验证。
 
 ## 浮窗在 Windows 与 Mac 上的显示
 
@@ -89,7 +89,7 @@ npm start
 
 0.3.0 起，桌面版内置本机 MCP 服务，无需额外安装 Node.js 或配置 OpenAI API Key。
 
-1. 打开回看，进入 **连接与识别设置 → 连接 Codex**，点击 **连接 Codex**。
+1. 退出旧版回看，打开 0.3.0；保持“启动时自动连接”开启，进入 **连接与识别设置 → 连接 Codex**，点击 **连接 Codex**。
 2. 在 Codex 的 MCP 设置中重新加载连接，或重新打开 Codex。回看收到实际 MCP 握手后才显示“已连接”。
 3. 在 Codex 聊天中说“把这段留作回看”，明确要保存的原文；也可以指定主题。需要查看已存内容时，说“打开这场对话的回看”。
 
@@ -111,7 +111,7 @@ Windows 首次使用：
 
 如果 Harness 正在运行，回看会等你完全退出后再安装。已有同版、新版、开发链接或被停用的回看插件会保留；停用的插件需在 Harness 中自行启用。安装失败时可在设置里重新检测重试。关闭“启动时自动连接”会停止后台安装检查。账号登录和模型服务配置仍在 Harness 中完成。
 
-macOS 首次使用：
+macOS 首次使用（0.3.0 请同步更新内置回看插件，支持跨来源去重）：
 
 1. 打开一次 DeepSeek Harness，完成宿主初始化，然后正常退出。
 2. 打开回看左下角的 **连接与识别设置**，确认识别到的 Harness 版本；不在常见目录时可选择应用。
@@ -150,7 +150,7 @@ npm run package:mac
 
 ## 正式签名与 Apple 公证
 
-当前公开下载的 0.2.0 仍为未公证预览包。正式公证流程已提供构建入口，但需要发布者先开通 Apple Developer Program，并在本机配置有效的 **Developer ID Application** 发布证书；Apple Development 测试证书不适用于此流程。
+当前公开下载的 0.3.0 仍为未公证预览包。正式公证流程已提供构建入口，但需要发布者先开通 Apple Developer Program，并在本机配置有效的 **Developer ID Application** 发布证书；Apple Development 测试证书不适用于此流程。
 
 公证凭据只保存在 macOS 钥匙串中。在本机终端运行 `xcrun notarytool store-credentials huikan-notary`，由发布者在交互提示中完成账号、公证凭据与开发团队的配置。不要把密码、私钥或公证凭据写入源码、发布附件或 GitHub 日志。
 
