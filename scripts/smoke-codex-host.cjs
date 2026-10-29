@@ -1,5 +1,5 @@
 'use strict';
-// Usage: node scripts/smoke-codex-host.cjs <absolute codex CLI> [absolute MCP entry]
+// Usage: node scripts/smoke-codex-host.cjs <absolute codex CLI> [absolute MCP entry] [packaged executable]
 // Uses only an isolated CODEX_HOME, an offline provider, and an ephemeral thread.
 // No turn is started, no model request is sent, and no user config/auth is read.
 const fs = require('node:fs/promises');
@@ -8,11 +8,11 @@ const os = require('node:os');
 const assert = require('node:assert/strict');
 const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
+const { createCodexSetup } = require('../desktop/codex-setup.cjs');
 const runFile = promisify(execFile);
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const exited = child => child.exitCode !== null || child.signalCode !== null;
 const safeCode = value => String(value || 'UNKNOWN').replace(/[^A-Z0-9_:-]/gi, '').slice(0, 80);
-const toml = value => JSON.stringify(String(value));
 
 function connect(child) {
   let nextId = 0, buffer = '', dead = false;
@@ -78,16 +78,19 @@ async function stop(child) {
 }
 
 async function main() {
-  if (process.argv.length < 3 || process.argv.length > 4) throw Error('Usage: node scripts/smoke-codex-host.cjs <absolute codex CLI> [absolute MCP entry]');
-  const cli = process.argv[2], entry = process.argv[3] || path.resolve(__dirname, '../codex-plugin/dist/server.cjs');
+  if (process.argv.length < 3 || process.argv.length > 5) throw Error('Usage: node scripts/smoke-codex-host.cjs <absolute codex CLI> [absolute MCP entry] [packaged executable]');
+  const cli = process.argv[2], entry = process.argv[3] || path.resolve(__dirname, '../codex-plugin/dist/server.cjs'), packaged = process.argv[4];
+  if (packaged && !path.isAbsolute(packaged)) throw Error('Packaged executable must be absolute');
   if (!path.isAbsolute(cli) || !path.isAbsolute(entry)) throw Error('Codex CLI and MCP entry must be absolute paths');
   await Promise.all([fs.access(cli), fs.access(entry)]);
-  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'huikan-codex-host-'));
+  const base = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'huikan-codex-host-')));
   const codexHome = path.join(base, 'codex'), schema = path.join(base, 'schema'), workspace = path.join(base, 'workspace');
   await Promise.all([fs.mkdir(codexHome, { mode: 0o700 }), fs.mkdir(workspace, { mode: 0o700 })]);
   const env = {};
   for (const key of ['PATH', 'HOME', 'USERPROFILE', 'SYSTEMROOT', 'SystemRoot', 'WINDIR', 'COMSPEC', 'PATHEXT', 'TEMP', 'TMP', 'TMPDIR', 'LANG']) if (process.env[key]) env[key] = process.env[key];
   env.CODEX_HOME = codexHome;
+  env.HOME = path.join(base, 'home'); env.USERPROFILE = env.HOME;
+  await fs.mkdir(env.HOME, { mode: 0o700 });
   env.HUIKAN_DISCOVERY_FILE = path.join(base, 'no-workbench', 'connection.json');
   env.MENGCANG_RECALL_BRIDGE_DIR = path.join(base, 'no-workbench', 'bridge');
   let child, normalExit = false, stderr = '';
@@ -103,10 +106,10 @@ async function main() {
       'model_provider = "huikan_host_fixture"', 'model = "fixture-no-model-calls"', 'approval_policy = "never"',
       '[analytics]', 'enabled = false', '[feedback]', 'enabled = false',
       '[model_providers.huikan_host_fixture]', 'name = "Offline MCP host fixture"', 'base_url = "http://127.0.0.1:9/v1"', 'wire_api = "responses"', 'requires_openai_auth = false',
-      '[mcp_servers.huikan]', `command = ${toml(process.execPath)}`, `args = [${toml(entry)}]`, 'startup_timeout_sec = 20', 'tool_timeout_sec = 15',
-      '[mcp_servers.huikan.env]', `CODEX_HOME = ${toml(codexHome)}`, `HUIKAN_DISCOVERY_FILE = ${toml(env.HUIKAN_DISCOVERY_FILE)}`, `MENGCANG_RECALL_BRIDGE_DIR = ${toml(env.MENGCANG_RECALL_BRIDGE_DIR)}`,
     ].join('\n') + '\n';
     await fs.writeFile(path.join(codexHome, 'config.toml'), config, { mode: 0o600, flag: 'wx' });
+    const setup = createCodexSetup({ env, command: packaged || process.execPath, args: [entry], runAsNode: !!packaged });
+    assert.equal((await setup.install()).configured, true, 'Real Codex configuration was not prepared');
     child = spawn(cli, ['app-server', '--stdio'], { env, cwd: workspace, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     child.stderr.setEncoding('utf8'); child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-8192); });
     const rpc = connect(child);
@@ -139,7 +142,7 @@ async function main() {
     normalExit = await stop(child);
     assert.equal(normalExit, true, 'Isolated Codex app-server did not quit normally');
     console.log(JSON.stringify({ codexHostInitialized: true, schemaVerified: true, ephemeralThreadOnly: true, discoveredTools: names,
-      safeToolCallPassed: true, adapterReportedDisconnected: result.isError === true, isolatedWorkbenchReachable: false, modelRequestMade: false, normalHostExit: true }));
+      safeToolCallPassed: true, packagedMcpRuntime: !!packaged, adapterReportedDisconnected: result.isError === true, isolatedWorkbenchReachable: false, modelRequestMade: false, normalHostExit: true }));
   } catch (error) {
     const permissionBlocked = error.code === 'EPERM' || stderr.split(/\r?\n/).some(line => /Operation not permitted|EPERM|Permission denied/i.test(line) && /sandbox|socket|listen|bind/i.test(line));
     if (permissionBlocked) throw Object.assign(Error('Isolated Codex host was blocked by the local sandbox permissions'), { code: 'HOST_SANDBOX_BLOCKED' });

@@ -58,18 +58,21 @@ function inspectConfiguration(text) {
     if (key?.[0] === 'mcp_servers' || (table?.[0] === 'mcp_servers' && table.length === 1 && key?.[0] === 'huikan')) throw conflict();
     if (!inRange && assignment && table?.[0] === 'mcp_servers' && table[1] === 'huikan') throw conflict();
     if (inRange && row.code) {
-      if (!owned || !assignment || !['command', 'args'].includes(key?.[0]) || key.length !== 1 || key[0] in owned) throw conflict();
-      try { owned[key[0]] = JSON.parse(assignment[2].trim()); } catch { throw conflict(); }
+      if (!owned || !assignment || !['command', 'args', 'env'].includes(key?.[0]) || key.length !== 1 || key[0] in owned) throw conflict();
+      if (key[0] === 'env') {
+        if (!/^\{\s*(?:ELECTRON_RUN_AS_NODE|"ELECTRON_RUN_AS_NODE"|'ELECTRON_RUN_AS_NODE')\s*=\s*(?:"1"|'1')\s*\}$/.test(assignment[2].trim())) throw conflict();
+        owned.env = { ELECTRON_RUN_AS_NODE: '1' };
+      } else try { owned[key[0]] = JSON.parse(assignment[2].trim()); } catch { throw conflict(); }
     }
     // An unowned subtable/array table is still a huikan configuration conflict.
     if (row.code.startsWith('[') && !header && /mcp_servers|huikan/.test(row.code)) throw conflict();
   }
-  if (range && (!owned || typeof owned.command !== 'string' || !Array.isArray(owned.args) || owned.args.some(arg => typeof arg !== 'string') || Object.keys(owned).length !== 2)) throw conflict();
+  if (range && (!owned || typeof owned.command !== 'string' || !Array.isArray(owned.args) || owned.args.some(arg => typeof arg !== 'string') || Object.keys(owned).length !== (owned.env ? 3 : 2))) throw conflict();
   return { range, owned };
 }
 
-function createCodexSetup({ home = os.homedir(), env = process.env, command, args = [], getConnectionStatus = async () => null } = {}) {
-  if (!path.isAbsolute(command || '') || !Array.isArray(args) || args.some(arg => typeof arg !== 'string' || arg.includes('\0')) || command.includes('\0')) throw failure('CODEX_COMMAND_INVALID', '回看连接程序路径无效。');
+function createCodexSetup({ home = os.homedir(), env = process.env, command, args = [], runAsNode = false, getConnectionStatus = async () => null } = {}) {
+  if (!path.isAbsolute(command || '') || !Array.isArray(args) || args.some(arg => typeof arg !== 'string' || arg.includes('\0')) || command.includes('\0') || typeof runAsNode !== 'boolean') throw failure('CODEX_COMMAND_INVALID', '回看连接程序路径无效。');
   const custom = typeof env.CODEX_HOME === 'string' && env.CODEX_HOME.trim() ? env.CODEX_HOME : null;
   const directory = custom || path.join(home, '.codex'), file = path.join(directory, 'config.toml');
   let pending = null;
@@ -98,7 +101,7 @@ function createCodexSetup({ home = os.homedir(), env = process.env, command, arg
   }
   async function status() {
     let configured = false, collision = false, issue;
-    try { const current = await read(); configured = current.parsed.owned?.command === command && JSON.stringify(current.parsed.owned?.args) === JSON.stringify(args); if (current.parsed.owned && !configured) issue = '回看位置已变化，点击连接 Codex 更新配置。'; }
+    try { const current = await read(); configured = current.parsed.owned?.command === command && JSON.stringify(current.parsed.owned?.args) === JSON.stringify(args) && Boolean(current.parsed.owned?.env) === runAsNode; if (current.parsed.owned && !configured) issue = '回看连接配置需要更新，点击连接 Codex 更新配置。'; }
     catch (error) { collision = error.code === 'CODEX_CONFIG_CONFLICT'; issue = publicError(error).message; }
     let connected = false;
     try { connected = (await getConnectionStatus())?.codex?.connected === true; } catch {}
@@ -108,7 +111,7 @@ function createCodexSetup({ home = os.homedir(), env = process.env, command, arg
     if (pending) return pending;
     pending = (async () => {
       const before = await read(true), eol = before.text.includes('\r\n') ? '\r\n' : '\n';
-      const block = [BEGIN, '[mcp_servers.huikan]', `command = ${JSON.stringify(command)}`, `args = ${JSON.stringify(args)}`, END, ''].join(eol);
+      const block = [BEGIN, '[mcp_servers.huikan]', `command = ${JSON.stringify(command)}`, `args = ${JSON.stringify(args)}`, ...(runAsNode ? ['env = { ELECTRON_RUN_AS_NODE = "1" }'] : []), END, ''].join(eol);
       const next = before.parsed.range ? before.text.slice(0, before.parsed.range.start) + block + before.text.slice(before.parsed.range.end) : before.text + (before.text && !before.text.endsWith('\n') ? eol : '') + (before.text ? eol : '') + block;
       if (next !== before.text) {
         const temporary = path.join(directory, `.huikan-config-${randomUUID()}.tmp`);

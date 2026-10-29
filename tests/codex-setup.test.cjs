@@ -48,6 +48,21 @@ test('updating an owned block preserves every other server and private setting v
   assert.doesNotMatch(JSON.stringify(await updated.status()), /literal secret/);
 });
 
+test('packaged Electron Node mode has one fixed environment value and upgrades the previous owned block', async t => {
+  const f = await fixture(t);
+  const original = '# preserve\n[mcp_servers.another]\ncommand = "keep"\n';
+  await f.config(original); await f.setup.install();
+  const setup = createCodexSetup({ home: f.home, env: {}, command: f.command, args: f.args, runAsNode: true });
+  const old = await setup.status(); assert.equal(old.configured, false); assert.equal(old.conflict, false);
+  assert.equal((await setup.install()).configured, true);
+  const configured = await fs.readFile(f.file, 'utf8'); assert.ok(configured.startsWith(original));
+  assert.ok(configured.includes('env = { ELECTRON_RUN_AS_NODE = "1" }')); assert.equal((configured.match(/ELECTRON_RUN_AS_NODE/g) || []).length, 1);
+  await setup.install(); assert.equal(await fs.readFile(f.file, 'utf8'), configured);
+  assert.equal((await f.setup.status()).configured, false, 'the requested launch mode is part of configuration identity');
+  await f.setup.install(); assert.equal((await f.setup.status()).configured, true); assert.doesNotMatch(await fs.readFile(f.file, 'utf8'), /ELECTRON_RUN_AS_NODE/);
+  assert.throws(() => createCodexSetup({ command: f.command, runAsNode: 'true' }), { code: 'CODEX_COMMAND_INVALID' });
+});
+
 test('unowned and edited huikan configurations are never overwritten', async t => {
   const configs = [
     '[mcp_servers.huikan]\ncommand = "other-program"\n',
@@ -57,6 +72,9 @@ test('unowned and edited huikan configurations are never overwritten', async t =
     'mcp_servers = { huikan = { command = "other-program" } }\n',
     'mcp_servers . huikan = { command = "other-program" }\n',
     '# BEGIN HUIKAN CODEX MCP v1\n[mcp_servers.huikan]\ncommand = "other-program"\nargs = []\nauto_approve = true\n# END HUIKAN CODEX MCP v1\n',
+    '# BEGIN HUIKAN CODEX MCP v1\n[mcp_servers.huikan]\ncommand = "other-program"\nargs = []\nenv = { ELECTRON_RUN_AS_NODE = "1", SECRET = "keep" }\n# END HUIKAN CODEX MCP v1\n',
+    '# BEGIN HUIKAN CODEX MCP v1\n[mcp_servers.huikan]\ncommand = "other-program"\nargs = []\nenv = { ELECTRON_RUN_AS_NODE = "0" }\n# END HUIKAN CODEX MCP v1\n',
+    '# BEGIN HUIKAN CODEX MCP v1\n[mcp_servers.huikan]\ncommand = "other-program"\nargs = []\nenv = { NODE_OPTIONS = "--inspect" }\n# END HUIKAN CODEX MCP v1\n',
   ];
   for (const original of configs) {
     const f = await fixture(t); await f.config(original);

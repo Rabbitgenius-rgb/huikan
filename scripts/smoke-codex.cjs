@@ -20,6 +20,8 @@ async function main() {
   const executable = process.argv[2];
   assert.ok(process.argv.length === 3 && path.isAbsolute(executable), 'Provide an absolute installed executable.');
   await fs.access(executable);
+  const mcpEntry = process.platform === 'darwin' ? path.resolve(path.dirname(executable), '..', 'Resources', 'app', 'codex-mcp.cjs') : path.join(path.dirname(executable), 'resources', 'app', 'codex-mcp.cjs');
+  await fs.access(mcpEntry);
   const base = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'huikan-codex-')));
   const directory = path.join(base, 'bridge');
   const env = { ...process.env, HUIKAN_DATA_HOME: path.join(base, 'desktop'), HUIKAN_COMPANION_HOME: path.join(base, 'companion'),
@@ -56,7 +58,7 @@ async function main() {
   const tool = async (name, args = {}) => (await request('tools/call', { name, arguments: args })).result;
   try {
     await launch();
-    mcp = spawn(executable, ['--huikan-codex-mcp'], { env, stdio: ['pipe', 'pipe', 'ignore'] });
+    mcp = spawn(executable, [mcpEntry], { env: { ...env, ELECTRON_RUN_AS_NODE: '1' }, stdio: ['pipe', 'pipe', 'ignore'] });
     mcp.once('error', error => { for (const entry of pending.values()) entry.reject(error); });
     let invalidOutput = false;
     lines = createInterface({ input: mcp.stdout });
@@ -72,9 +74,10 @@ async function main() {
     assert.deepEqual((await request('tools/list')).result.tools.map(value => value.name).sort(), ['connection_status', 'list_recalls', 'save_excerpt', 'show_recalls']);
     await until(async () => (await local('sticky', 'connectionStatus')).codex.connected, 10000, 'MCP heartbeat was not observed.');
     await fs.mkdir(env.CODEX_HOME, { mode: 0o700 });
-    const setup = createCodexSetup({ env, command: executable, args: ['--huikan-codex-mcp'], getConnectionStatus: () => local('sticky', 'connectionStatus') });
+    const setup = createCodexSetup({ env, command: executable, args: [mcpEntry], runAsNode: true, getConnectionStatus: () => local('sticky', 'connectionStatus') });
     assert.equal((await setup.status()).configured, false);
     assert.equal((await setup.install()).configured, true);
+    assert.match(await fs.readFile(path.join(env.CODEX_HOME, 'config.toml'), 'utf8'), /env = \{ ELECTRON_RUN_AS_NODE = "1" \}/);
     assert.equal((await setup.status()).connected, true);
     const a = '10000000-0000-4000-8000-000000000001', b = '10000000-0000-4000-8000-000000000002';
     const input = { threadId: a, title: 'Codex 安装包检查', threadTitle: '合成 Codex 线程 A', topic: '本机留存', text: '仅用于适配检查。\n\n```js\nconst source = "Codex";\n```\n\n原文逐字保留。' };
