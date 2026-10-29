@@ -22,7 +22,15 @@ async function diagnostics(){
 }
 (async()=>{
  assert.equal(process.platform,'win32');assert.ok(expected&&path.isAbsolute(expected));
- const host=await detectHarness();
+ let host;
+ // Match the application's bounded re-detection after a cold registry query.
+ // Unsupported or incorrectly identified installations still fail immediately.
+ for(let attempt=1;attempt<=3;attempt++){
+  const started=Date.now();host=await detectHarness();
+  console.log(JSON.stringify({check:'installation-discovery',attempt,durationMs:Date.now()-started,installed:host.installed,supported:host.supported,reason:host.reason||null}));
+  if(host.installed||host.reason!=='not-found'||attempt===3)break;
+  await new Promise(resolve=>setTimeout(resolve,500));
+ }
  try{
   assert.equal(host.supported,true,'Official Harness must be discovered without a selected path');
   assert.equal(path.resolve(host.path).toLowerCase(),path.dirname(expected).toLowerCase());
