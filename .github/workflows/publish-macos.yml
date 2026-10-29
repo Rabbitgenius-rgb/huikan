@@ -64,7 +64,7 @@ jobs:
           with zipfile.ZipFile(archive) as bundle:
               assert bundle.testzip() is None
               # ditto archives may use a legacy filename flag for Unicode.
-              plists = [name for name in bundle.namelist() if name.endswith('.app/Contents/Info.plist') and not name.startswith('__MACOSX/')]
+              plists = [name for name in bundle.namelist() if name.endswith('.app/Contents/Info.plist') and name.count('/') == 2]
               assert len(plists) == 1
               prefix = plists[0][:-len('Contents/Info.plist')]
               info = plistlib.loads(bundle.read(plists[0]))
