@@ -23,15 +23,21 @@
 
 ## 下载安装
 
-[**下载 Windows 10/11 64 位安装程序（0.3.0）**](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.3.0/Huikan-0.3.0-windows-x64-setup.exe) · [发行说明](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.3.0)
+[**下载 Windows 10/11 64 位安装程序（0.3.1）**](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.3.1/Huikan-0.3.1-windows-x64-setup.exe) · [发行说明](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.3.1)
 
 双击安装程序，按向导安装后打开“回看”。无需另装 Node.js；工作台和浮窗一起安装。Windows 安装包未做代码签名，首次运行可能显示“未知发布者”或 SmartScreen 提示；请核对下载来源为本项目的 GitHub 发行页。组织策略禁止运行未签名程序时，需要管理员按其策略处理。
 
-Windows 0.3.0 已在 GitHub Windows Server 2025 构建环境实际安装：工作台与浮窗启动、中文资料路径、示例原文保存、重复请求去重和重启恢复均通过。使用官方 Harness 0.2.1-rc.3 的额外联调也通过了安装记录自动发现、插件自动安装、重复检测不重复安装、真实客户端心跳及正常退出。摘录测试通过真实宿主插件接口发送合成内容，尚未覆盖真实对话界面的选中文字操作及全部来源回跳。额外的 Codex 安装测试通过了内置 MCP 运行环境、配置安装与握手、精确保存、线程隔离、重试和重启恢复；真实 Harness 也通过了跨 Codex/Harness 双向去重保留首次来源的检查。
+Windows 0.3.1 已在 GitHub Windows Server 2025 构建环境实际安装：工作台与浮窗启动、中文资料路径、示例原文保存、重复请求去重和重启恢复均通过。使用官方 Harness 0.2.1-rc.3 的额外联调也通过了安装记录自动发现、插件自动安装、重复检测不重复安装、真实客户端心跳及正常退出。摘录测试通过真实宿主插件接口发送合成内容，尚未覆盖真实对话界面的选中文字操作及全部来源回跳。额外的 Codex 安装测试通过了内置 MCP 运行环境、配置安装与握手、精确保存、线程隔离、重试和重启恢复；真实 Harness 也通过了跨 Codex/Harness 双向去重保留首次来源的检查。
 
-0.3.0 的额外原生窗口检查通过了主题首页、跨轮次主题归组、完整原文、悬停与点击打开、主次窗焦点切换、隐藏重开、贴出便签、切换对话关闭旧详情、Acrylic 系统属性读回和正常退出。该 Server 环境的实际桌面截图呈现实色，因此不能将它作为普通 Windows 11 电脑最终模糊质感的验收；系统材质会受透明度设置、系统版本和运行环境影响。[构建与安装检查](https://github.com/Rabbitgenius-rgb/huikan/actions/runs/40909394027)。
+0.3.1 的额外原生窗口检查通过了主题首页、跨轮次主题归组、完整原文、悬停与点击打开、主次窗焦点切换、隐藏重开、贴出便签、切换对话关闭旧详情、Acrylic 系统属性读回和正常退出。该 Server 环境的实际桌面截图呈现实色，因此不能将它作为普通 Windows 11 电脑最终模糊质感的验收；系统材质会受透明度设置、系统版本和运行环境影响。[构建与安装检查](https://github.com/Rabbitgenius-rgb/huikan/actions/runs/41062595015)。
 
 Windows 版内置回看插件，启动时自动识别支持的官方 Harness。已初始化且完全退出的宿主会自动安装插件；安装后打开 Harness 即可连接。无需手动导入 `.tgz`，也无需额外安装 Node.js。首次安装可能需要联网下载宿主插件依赖。
+
+Windows 0.3.1 起，关闭工作台会隐藏到系统托盘，资料库和连接继续在后台运行。左键托盘图标或按默认 `Ctrl+Shift+K` 打开/收起回看浮窗；右键可打开工作台、显示/隐藏便签、选择唤出快捷键或退出回看。`Esc` 和 `Alt+F4` 会收起回看浮窗，再次唤出仍可使用。
+
+“唤出快捷键”提供 `Ctrl+Shift+K`、`Ctrl+Alt+K` 和 `Ctrl+Shift+Space`，选择会保存并在重启后恢复；新组合被占用或设置未保存时保留原快捷键。首次关闭工作台会显示轻提示，系统也可能将图标收进托盘的隐藏区域，可自行将其移出。只有“退出回看”才会保存并结束后台工作台与浮窗。若自动连接已关闭或托盘未能启动，工作台会保持可见并提示处理。
+
+0.3.1 已验证关窗后通过 MCP 保存、系统快捷键、`Esc`/`Alt+F4` 后重新唤出、菜单恢复工作台、改键及摘录重启恢复，以及两轮正常托盘退出。按键通过实际 Windows 输入 API 发送；托盘入口通过真实 Tray/Menu 回调触发，未覆盖物理鼠标命中托盘或隐藏区域。检查只使用独立合成资料，未发出模型请求。
 
 [**下载 macOS Apple Silicon 预览包（0.3.0）**](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.3.0/Huikan-0.3.0-mac-arm64.zip) · [发行说明与全部附件](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.3.0)
 
@@ -89,7 +95,7 @@ npm start
 
 0.3.0 起，桌面版内置本机 MCP 服务，无需额外安装 Node.js 或配置 OpenAI API Key。
 
-1. 退出旧版回看，打开 0.3.0；保持“启动时自动连接”开启，进入 **连接与识别设置 → 连接 Codex**，点击 **连接 Codex**。
+1. 退出旧版回看，打开 0.3.0 或更新版本；保持“启动时自动连接”开启，进入 **连接与识别设置 → 连接 Codex**，点击 **连接 Codex**。
 2. 在 Codex 的 MCP 设置中重新加载连接，或重新打开 Codex。回看收到实际 MCP 握手后才显示“已连接”。
 3. 在 Codex 聊天中说“把这段留作回看”，明确要保存的原文；也可以指定主题。需要查看已存内容时，说“打开这场对话的回看”。
 
@@ -136,7 +142,7 @@ macOS 首次使用（0.3.0 请同步更新内置回看插件，支持跨来源�
 npm run package:win
 ```
 
-输出为仓库旁 `huikan-release/windows/Huikan-0.3.0-windows-x64-setup.exe`。GitHub 仓库的 **Actions → Build Windows → Run workflow** 会在 Windows 环境中运行测试、构建 NSIS 安装程序、实际安装，并启动安装后的程序检查摘录保存与重启恢复；另外安装固定版本的官方 Harness，检查初始化、自动安装和插件连接；检查成功后在运行附件中提供安装程序和配套插件。工作流不会自动发布新的 Release。
+输出为仓库旁 `huikan-release/windows/Huikan-0.3.1-windows-x64-setup.exe`。GitHub 仓库的 **Actions → Build Windows → Run workflow** 会在 Windows 环境中运行测试、构建 NSIS 安装程序、实际安装，并启动安装后的程序检查摘录保存、关窗留后台、系统快捷键、托盘菜单和重启恢复；另外安装固定版本的官方 Harness，检查初始化、自动安装和插件连接；检查成功后在运行附件中提供安装程序和配套插件。工作流不会自动发布新的 Release。
 
 ## 构建 macOS 预览包
 
@@ -146,7 +152,7 @@ npm run package:win
 npm run package:mac
 ```
 
-输出为仓库旁 `huikan-release/Huikan-0.3.0-mac-arm64.zip`。解压后将“回看.app”放到应用目录即可试用。Mac 构建脚本当前仅面向 Apple Silicon，使用本机临时签名，尚未完成干净机器安装验证、Developer ID 签名与 Apple 公证，不应视作正式稳定发行。
+输出为仓库旁 `huikan-release/Huikan-<版本>-mac-arm64.zip`。解压后将“回看.app”放到应用目录即可试用。Mac 构建脚本当前仅面向 Apple Silicon，使用本机临时签名，尚未完成干净机器安装验证、Developer ID 签名与 Apple 公证，不应视作正式稳定发行。
 
 ## 正式签名与 Apple 公证
 
