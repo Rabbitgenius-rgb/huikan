@@ -55,6 +55,9 @@ jobs:
       - name: Verify installed Codex MCP capture and setup
         shell: pwsh
         run: node scripts/smoke-codex.cjs "$env:HUIKAN_INSTALLED_EXE"
+      - name: Verify installed Windows tray and background lifecycle
+        shell: pwsh
+        run: node scripts/smoke-windows-tray.cjs "$env:HUIKAN_INSTALLED_EXE"
       - name: Verify native Windows glass and capture composited evidence
         shell: pwsh
         run: node scripts/smoke-windows-glass.cjs "$env:HUIKAN_INSTALLED_EXE"

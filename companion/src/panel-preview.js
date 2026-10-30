@@ -5,7 +5,7 @@ const { state, PRELOAD } = require('./state');
 const { glassWindowOptions, attachGlassMaterial } = require('./window-material.cjs');
 
 // Topic details share the panel's source context and native glass material.
-function attach(panel, ipcMain, { getData } = {}) {
+function attach(panel, ipcMain, { getData, onDismiss } = {}) {
   let preview = null, loaded = false, request = 0, active = null, outsideSince = 0;
   const data = () => typeof getData === 'function' ? getData() : null;
   const mainFrame = event => !event.senderFrame || event.senderFrame === event.sender.mainFrame;
@@ -57,6 +57,13 @@ function attach(panel, ipcMain, { getData } = {}) {
       hide(); panel.hide();
     }));
     win.on('closed', () => { if (preview === win) { preview = null; loaded = false; active = null; } });
+    if (process.platform === 'win32') {
+      const dismiss = () => { if (typeof onDismiss === 'function') onDismiss(); else { hide(); if (!panel.isDestroyed()) panel.hide(); } };
+      win.on('close', event => { if (!state.quitting) { event.preventDefault(); dismiss(); } });
+      win.webContents.on('before-input-event', (event, input) => {
+        if (input.type === 'keyDown' && input.key === 'Escape') { event.preventDefault(); dismiss(); }
+      });
+    }
     win.loadFile(path.join(__dirname, 'panel', 'preview.html'));
   }
   function show(event, kind, id, row) {
@@ -109,6 +116,6 @@ function attach(panel, ipcMain, { getData } = {}) {
     ipcMain.removeListener('preview:show', show); ipcMain.removeListener('preview:hide', close); ipcMain.removeListener('preview:ready', ready);
     if (preview && !preview.isDestroyed()) preview.destroy();
   });
-  return { ownsWebContents, ownsItem, hasFocus, refresh: () => { if (active) deliver(); } };
+  return { ownsWebContents, ownsItem, hasFocus, hide, refresh: () => { if (active) deliver(); } };
 }
 module.exports = { attach };

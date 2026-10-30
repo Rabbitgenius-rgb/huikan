@@ -16,9 +16,9 @@ const SETUP_MESSAGES={
  installed:'回看插件已自动安装。请打开 DeepSeek Harness，即可连接使用。'
 };
 const setupError=message=>Object.assign(Error(message),{isSetupError:true});
-function createConnectionManager({directory,companionDirectory,companionPath,companionArguments=[companionPath],executable,preferences,getLibraryReady,bundledPlugin,initialSelectedPath=null,env=process.env,platform=process.platform,detect=detectHarness,call=callPrivate,publish=publishConnection,spawnProcess=spawn,runFile=execFile,onChange=()=>{}}){
+function createConnectionManager({directory,companionDirectory,companionPath,companionArguments=[companionPath],executable,preferences,getLibraryReady,bundledPlugin,initialSelectedPath=null,env=process.env,platform=process.platform,detect=detectHarness,call=callPrivate,publish=publishConnection,spawnProcess=spawn,runFile=execFile,onChange=()=>{},onOpenWorkbench=()=>{},onQuitRequested=()=>{},onCompanionUnavailable=()=>{},backgroundReadyTimeoutMs=5000}){
  let advertisement,child,selectedPath=initialSelectedPath,lastError='',closed=false,starting=null,installing=null,reconciling=null,installationActive=false,installError='',installedThisSession=false;
- const stopping=new WeakSet();
+ const stopping=new WeakSet(),trayReady=new WeakSet();
  const file=discoveryFile(env);
  async function companionStatus(){try{return await call({directory,service:'sticky',method:'connectionStatus',params:{},timeoutMs:1200});}catch(error){if(error.code==='METHOD_NOT_FOUND')return {protocol:0,connected:false};return null;}}
  async function start(){
@@ -31,8 +31,14 @@ function createConnectionManager({directory,companionDirectory,companionPath,com
    if(!running&&!child){
     const childEnv={...env,MENGCANG_RECALL_BRIDGE_DIR:directory,MENGCANG_RECALL_USER_DATA:companionDirectory,HUIKAN_DISCOVERY_FILE:file};delete childEnv.ELECTRON_RUN_AS_NODE;
     const launched=spawnProcess(executable,companionArguments,{env:childEnv,stdio:['ignore','ignore','ignore','ipc']});child=launched;
-    launched.once('error',()=>{if(child===launched){lastError='浮窗未能启动，请重新尝试连接。';child=null;onChange();}});
-    launched.once('exit',()=>{if(child===launched){child=null;if(!stopping.has(launched))lastError='浮窗连接已中断，请点击重新检测恢复。';}onChange();});
+    launched.on('message',value=>{
+     if(child!==launched||closed||stopping.has(launched)||platform!=='win32')return;
+     if(value?.type==='huikan-tray-ready'){trayReady.add(launched);return;}
+     const action=value?.type==='huikan-open-workbench'?onOpenWorkbench:value?.type==='huikan-request-quit'?onQuitRequested:null;
+     if(action)void Promise.resolve().then(action).catch(()=>{lastError='托盘操作暂未完成，请打开工作台重试。';onCompanionUnavailable();onChange();});
+    });
+    launched.once('error',()=>{if(child===launched){lastError='浮窗未能启动，请重新尝试连接。';child=null;onCompanionUnavailable();onChange();}});
+    launched.once('exit',()=>{if(child===launched){child=null;if(!stopping.has(launched)){lastError='浮窗连接已中断，请点击重新检测恢复。';onCompanionUnavailable();}}onChange();});
    }
   }catch(error){lastError=error.code==='CONNECTION_IN_USE'?error.message:'自动连接暂不可用，请检查本机目录权限后重试。';}
   onChange();})().finally(()=>{starting=null;if(!closed&&!lastError)void reconcile();});return starting;
@@ -119,6 +125,24 @@ function createConnectionManager({directory,companionDirectory,companionPath,com
    finally{onChange();}
   })().finally(()=>{reconciling=null;});return reconciling;
  }
- return {start,status,install,reconcile,async retry(){installError='';await start();await reconcile();return status();},async configure(patch){const before=preferences.get(),value=await preferences.set(patch);try{if(value.autoConnect)await start();else await stop();return value;}catch(error){await preferences.set(before);throw error;}},async selectApp(value){selectedPath=value;installError='';installedThisSession=false;void reconcile();return status();},async close(){closed=true;try{await starting;await Promise.allSettled([installing,reconciling]);await stop();}catch(error){closed=false;throw error;}},get selectedPath(){return selectedPath;}};
+ async function prepareForBackground(){
+  if(platform!=='win32'||closed||!preferences.get().autoConnect)return false;
+  await start();const owned=child;
+  if(!owned?.connected)return false;
+  const deadline=Date.now()+backgroundReadyTimeoutMs;
+  do{
+   const value=await companionStatus();
+   if(closed||child!==owned||!owned.connected||!preferences.get().autoConnect)return false;
+   if(value?.protocol===1&&trayReady.has(owned))return true;
+   if(Date.now()>=deadline)break;
+   await new Promise(resolve=>setTimeout(resolve,100));
+  }while(true);
+  return false;
+ }
+ async function notifyWorkbenchHidden(){
+  const owned=child;if(closed||!owned?.connected)return false;
+  return new Promise(resolve=>{try{owned.send({type:'huikan-workbench-hidden'},error=>resolve(!error&&child===owned&&owned.connected));}catch{resolve(false);}});
+ }
+ return {start,status,install,reconcile,prepareForBackground,notifyWorkbenchHidden,async retry(){installError='';await start();await reconcile();return status();},async configure(patch){const before=preferences.get(),value=await preferences.set(patch);try{if(value.autoConnect)await start();else{await stop();onCompanionUnavailable();}return value;}catch(error){await preferences.set(before);throw error;}},async selectApp(value){selectedPath=value;installError='';installedThisSession=false;void reconcile();return status();},async close(){closed=true;try{await starting;await Promise.allSettled([installing,reconciling]);await stop();}catch(error){closed=false;throw error;}},get selectedPath(){return selectedPath;}};
 }
 module.exports={createConnectionManager};

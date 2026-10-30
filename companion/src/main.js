@@ -19,7 +19,7 @@ const diagnostics = require('./window-diagnostics.cjs').createWindowDiagnostics(
 let bridge, refreshTimer, quitAllowed = false;
 const primary = app.requestSingleInstanceLock();
 if (!primary) app.quit();
-if(process.send){process.on('message',value=>{if(value?.type==='huikan-quit')app.quit();});process.once('disconnect',()=>app.quit());}
+if(process.send){process.on('message',value=>{if(value?.type==='huikan-quit')app.quit();else if(value?.type==='huikan-workbench-hidden')notifyWorkbenchHidden();});process.once('disconnect',()=>app.quit());}
 const { state, PRELOAD, pinnedIds } = require('./state');
 const settings = require('./settings');
 const stickies = require('./stickies');
@@ -30,8 +30,8 @@ const { topicPresentation, createTopicOrganizationRequest } = require('./topic-p
 const { nativeState, launchNativeFrontend } = require('./native-frontend.cjs');
 const configuredNative = process.env.MENGCANG_RECALL_NATIVE_UI || candidateConfig.nativeUIPath;
 const nativeUIPath = configuredNative ? (path.isAbsolute(configuredNative) ? configuredNative : path.join(process.resourcesPath, configuredNative)) : null;
-let nativeFrontend, topicOrganizer, appearance, topicPreviewController;
-let lastPayload = '', topicDialogOpen = false;
+let nativeFrontend, topicOrganizer, appearance, topicPreviewController, recallShortcut;
+let lastPayload = '', topicDialogOpen = false, hiddenHintRequested = false, hiddenHintShown = false;
 
 const PANEL_W = 320;
 const PANEL_H = 400;
@@ -46,7 +46,10 @@ function trayIcon() {
       const d = Math.abs(x - c) / 7.5 + Math.abs(y - c) / 7.5;
       if (d <= 1) {
         const i = (y * size + x) * 4;
-        buf[i + 3] = d > 0.82 ? 255 : 150;
+        // An outlined white diamond stays visible on both light and dark
+        // Windows taskbars; macOS continues to tint its template image.
+        if (process.platform === 'win32' && d < 0.78) buf[i] = buf[i + 1] = buf[i + 2] = 255;
+        buf[i + 3] = process.platform === 'win32' ? 255 : d > 0.82 ? 255 : 150;
       }
     }
   }
@@ -86,16 +89,30 @@ function createPanel() {
       else diagnostics.record('panel.blur.keep', win);
     });
   });
+  if (process.platform === 'win32') {
+    win.on('close', event => { if (!state.quitting) { event.preventDefault(); hidePanel(); } });
+    win.webContents.on('before-input-event', (event, input) => {
+      if (input.type === 'keyDown' && input.key === 'Escape') { event.preventDefault(); hidePanel(); }
+    });
+  }
   return win;
 }
 
+function hidePanel() {
+  if (state.quitting) return;
+  if (state.tearing) stickies.endTear();
+  topicPreviewController?.hide?.();
+  if (state.panel && !state.panel.isDestroyed()) state.panel.hide();
+}
+
 function togglePanel() {
+  if (state.quitting) return;
   if (nativeUIPath) { nativeFrontend?.show(); return; }
   const win = state.panel;
   diagnostics.record('panel.toggle', win);
   if (!win || win.isDestroyed()) return;
   if (win.isVisible()) {
-    win.hide();
+    hidePanel();
     return;
   }
   showPanel();
@@ -123,9 +140,50 @@ function showPanel() {
   win.webContents.send('pinned:change', pinnedIds());
 }
 
+function managedByWorkbench() { return process.platform === 'win32' && typeof process.send === 'function' && process.connected !== false; }
+function sendWorkbench(type) {
+  try { process.send({ type }, error => { if (error) app.quit(); }); }
+  catch { app.quit(); }
+}
+function requestQuit() { if (managedByWorkbench()) sendWorkbench('huikan-request-quit'); else app.quit(); }
+function notifyTrayReady() {
+  if (!managedByWorkbench() || !bridge || !state.tray || state.tray.isDestroyed() || !state.panel || state.panel.isDestroyed() || state.quitting) return;
+  const notify = () => {
+    if (!state.tray.isDestroyed() && !state.panel.isDestroyed() && !state.panel.webContents.isLoading() && !state.quitting) sendWorkbench('huikan-tray-ready');
+  };
+  if (state.panel.webContents.isLoading()) state.panel.webContents.once('did-finish-load', notify);
+  else notify();
+}
+function notifyWorkbenchHidden() {
+  if (process.platform !== 'win32' || hiddenHintShown) return;
+  if (!state.tray || !recallShortcut) { hiddenHintRequested = true; return; }
+  hiddenHintRequested = false; hiddenHintShown = true;
+  const shortcut = recallShortcut.status();
+  try { state.tray.displayBalloon({ iconType: 'info', title: '回看仍在后台运行', respectQuietTime: true,
+    content: shortcut.registered ? `点击托盘图标或按 ${shortcut.label} 打开回看。右键图标可打开工作台、更改快捷键或退出。`
+      : '点击托盘图标打开回看。快捷键暂未启用，可右键图标选择其他组合；“退出回看”会结束后台连接。' }); } catch { /* Windows may suppress notifications; the tray and menu remain available. */ }
+}
+function updateTrayTooltip() {
+  const shortcut = recallShortcut?.status();
+  state.tray?.setToolTip(shortcut ? `回看 · 对话摘录\n${shortcut.registered ? shortcut.label : '快捷键未启用，请右键设置'}` : '梦藏 · 对话回看');
+}
+async function changeRecallShortcut(accelerator) {
+  try {
+    const result = await recallShortcut.select(accelerator); updateTrayTooltip();
+    if (result.error) await dialog.showMessageBox({ type: 'warning', title: '快捷键未更改', message: result.error, buttons: ['知道了'], noLink: true });
+  } catch (error) {
+    await dialog.showMessageBox({ type: 'warning', title: '快捷键未更改', message: error.message, buttons: ['知道了'], noLink: true }).catch(() => {});
+  }
+}
 function buildTrayMenu() {
+  const shortcut = recallShortcut?.status();
   return Menu.buildFromTemplate([
-    { label: '打开回看浮窗', accelerator: 'CommandOrControl+Shift+K', click: showPanel },
+    { label: '打开回看浮窗', ...(shortcut?.registered ? { accelerator: shortcut.accelerator } : !shortcut ? { accelerator: 'CommandOrControl+Shift+K' } : {}), click: showPanel },
+    ...(managedByWorkbench() ? [{ label: '打开回看工作台', click: () => sendWorkbench('huikan-open-workbench') }] : []),
+    ...(recallShortcut ? [{ label: '唤出快捷键', submenu: [
+      ...recallShortcut.choices.map(choice => ({ label: choice.label, type: 'radio', checked: shortcut.registered && choice.accelerator === shortcut.accelerator, click: () => { void changeRecallShortcut(choice.accelerator); } })),
+      ...(shortcut.error ? [{ type: 'separator' }, { label: shortcut.registered ? '上次更改未完成，保留原快捷键' : '快捷键未启用，请选择其他组合', enabled: false }] : []),
+    ] }] : []),
     { type: 'separator' },
     { label: state.stickiesHidden ? '显示所有便签' : '隐藏所有便签', click: () => { stickies.setAllHidden(!state.stickiesHidden); } },
     { type: 'separator' },
@@ -133,7 +191,7 @@ function buildTrayMenu() {
     { label: '外观：始终 3D', type: 'radio', checked: state.mode === '3d', click: () => settings.setMode('3d') },
     { label: '外观：始终 2D（节能）', type: 'radio', checked: state.mode === '2d', click: () => settings.setMode('2d') },
     { type: 'separator' },
-    { label: '退出', role: 'quit' },
+    process.platform === 'win32' ? { label: '退出回看', click: requestQuit } : { label: '退出', role: 'quit' },
   ]);
 }
 
@@ -246,14 +304,14 @@ if (primary) app.whenReady().then(async () => {
   update(state.service.snapshot());
   if (!nativeUIPath) {
   state.tray = new Tray(trayIcon());
-  state.tray.setToolTip('梦藏 · 对话回看');
+  updateTrayTooltip();
   if (process.platform === 'darwin') state.tray.setTitle('回看');
   state.tray.on('click', togglePanel);
   state.tray.on('right-click', () => state.tray.popUpContextMenu(buildTrayMenu()));
   }
   state.panel = createPanel();
   app.on('activate', showPanel);
-  topicPreviewController = panelPreview.attach(state.panel, ipcMain, { getData: payload });
+  topicPreviewController = panelPreview.attach(state.panel, ipcMain, { getData: payload, onDismiss: hidePanel });
   ipcMain.handle('data:get', event => trustedApp(event) ? payload() : null);
   const requestTopicOrganization = createTopicOrganizationRequest({
     getSnapshot: () => state.service.snapshot(),
@@ -312,12 +370,17 @@ if (primary) app.whenReady().then(async () => {
   if (nativeUIPath) {
     nativeFrontend = launchNativeFrontend({ appPath: nativeUIPath, onAction: nativeAction, onExit: () => { if (!state.quitting) app.quit(); } });
     publishNative();
+  } else if (process.platform === 'win32') {
+    recallShortcut = require('./recall-shortcut.cjs').createRecallShortcut({ directory: userData, globalShortcut, invoke: togglePanel });
+    await recallShortcut.start(); updateTrayTooltip();
+    if (hiddenHintRequested) notifyWorkbenchHidden();
   } else globalShortcut.register('CommandOrControl+Shift+K', togglePanel);
   app.on('second-instance', showPanel);
   if (process.argv.includes('--show-panel')) {
     if (!state.panel.webContents.isLoading()) showPanel();
     else state.panel.once('ready-to-show', showPanel);
   }
+  notifyTrayReady();
   console.log(nativeUIPath ? 'Recall companion ready with native UI and cached Harness model topics.' : 'Recall companion ready.');
 }).catch(error => { console.error('Recall startup failed:', error.code || 'STARTUP_FAILED', error.message); quitAllowed = true; app.quit(); });
 
@@ -334,6 +397,7 @@ app.on('before-quit', event => {
     await bridge?.close();
     await topicOrganizer?.close();
     await state.service.close();
+    await recallShortcut?.close();
     quitAllowed = true; app.quit();
   })().catch(error => { state.quitting = false; console.error('Recall state not saved:', error.code || 'SAVE_FAILED'); });
 });

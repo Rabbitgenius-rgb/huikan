@@ -1,8 +1,8 @@
 const test=require('node:test'),assert=require('node:assert/strict'),{EventEmitter}=require('node:events');
 const {createConnectionManager}=require('../desktop/connection-manager.cjs');
-function setup({running=null,ready=true,detected=true,publishError=null,platform=process.platform,detectReason}={}){
+function setup({running=null,ready=true,detected=true,publishError=null,platform=process.platform,detectReason,onOpenWorkbench,onQuitRequested,onCompanionUnavailable}={}){
  let settings={autoConnect:true,recognizeContent:true,showRecommendations:true},starts=0,released=0,child;
- const manager=createConnectionManager({directory:'/test/bridge',companionDirectory:'/test/companion',companionPath:'/test/companion-app',executable:'/test/electron',env:{HUIKAN_DISCOVERY_FILE:'/test/connection.json'},platform,preferences:{get:()=>({...settings}),async set(value){settings={...settings,...value};return settings;}},getLibraryReady:()=>ready,detect:async()=>({installed:detected,supported:detected,version:detected?'0.2.1-rc.3':null,reason:detectReason}),call:async()=>{if(running)return running;throw Object.assign(Error(),{code:'SERVICE_UNAVAILABLE'});},publish:async()=>{if(publishError)throw publishError;return{async close(){released++;}};},spawnProcess:()=>{starts++;child=new EventEmitter();child.connected=true;child.send=()=>child.emit('exit',0);return child;}});
+ const manager=createConnectionManager({directory:'/test/bridge',companionDirectory:'/test/companion',companionPath:'/test/companion-app',executable:'/test/electron',env:{HUIKAN_DISCOVERY_FILE:'/test/connection.json'},platform,onOpenWorkbench,onQuitRequested,onCompanionUnavailable,backgroundReadyTimeoutMs:0,preferences:{get:()=>({...settings}),async set(value){settings={...settings,...value};return settings;}},getLibraryReady:()=>ready,detect:async()=>({installed:detected,supported:detected,version:detected?'0.2.1-rc.3':null,reason:detectReason}),call:async()=>{if(running)return running;throw Object.assign(Error(),{code:'SERVICE_UNAVAILABLE'});},publish:async()=>{if(publishError)throw publishError;return{async close(){released++;}};},spawnProcess:()=>{starts++;child=new EventEmitter();child.connected=true;child.send=()=>child.emit('exit',0);return child;}});
  return{manager,get starts(){return starts;},get released(){return released;},set running(value){running=value;},set ready(value){ready=value;},get child(){return child;}};
 }
 test('a live companion is reused, and an installed application alone is never called connected',async()=>{const f=setup({running:{protocol:1,connected:false}});await f.manager.start();assert.equal(f.starts,0);assert.notEqual((await f.manager.status()).state,'connected');f.running={protocol:1,connected:true};assert.equal((await f.manager.status()).state,'connected');f.ready=false;assert.notEqual((await f.manager.status()).state,'connected');await f.manager.close();});
@@ -114,4 +114,32 @@ test('closing or disabling during asynchronous detection prevents a late automat
 test('profile roots match Harness tilde and blank override rules and version ordering preserves newer releases',()=>{
  const home=path.join(os.tmpdir(),'fixture-home');assert.equal(harnessHome({DSH_HOME:'   '},home),path.join(home,'.dsh'));assert.equal(harnessHome({DSH_HOME:'~/custom'},home),path.join(home,'custom'));assert.equal(harnessHome({DSH_HOME:'~\\custom'},home),path.join(home,'custom'));
  assert.equal(compareVersions('0.2.2-rc.3','0.2.2'),-1);assert.equal(compareVersions('0.2.2+custom','0.2.2'),0);assert.equal(compareVersions('0.2.2-rc.10','0.2.2-rc.2'),1);assert.equal(compareVersions('working-copy','0.2.2'),null);
+});
+
+test('Windows background mode requires an owned, tray-ready companion and a live bridge',async()=>{
+ const external=setup({platform:'win32',running:{protocol:1}});await external.manager.start();
+ assert.equal(await external.manager.prepareForBackground(),false,'A reused process is not our reliable tray owner');await external.manager.close();
+ const own=setup({platform:'win32'});await own.manager.start();
+ assert.equal(await own.manager.prepareForBackground(),false);
+ own.running={protocol:1};assert.equal(await own.manager.prepareForBackground(),false,'A native UI without Tray readiness cannot hide the workbench');
+ own.child.emit('message',{type:'huikan-tray-ready'});
+ assert.equal(await own.manager.prepareForBackground(),true);
+ own.child.connected=false;assert.equal(await own.manager.prepareForBackground(),false);own.child.connected=true;await own.manager.close();
+});
+
+test('only the current Windows tray child can open or quit its parent',async()=>{
+ let opens=0,quits=0;const f=setup({platform:'win32',onOpenWorkbench:()=>{opens++;},onQuitRequested:()=>{quits++;}});
+ await f.manager.start();const child=f.child;
+ child.emit('message',{type:'unknown'});child.emit('message',{type:'huikan-open-workbench'});child.emit('message',{type:'huikan-request-quit'});
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(opens,1);assert.equal(quits,1);
+ await f.manager.close();child.emit('message',{type:'huikan-open-workbench'});child.emit('message',{type:'huikan-request-quit'});
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(opens,1);assert.equal(quits,1);
+});
+
+test('background hint delivery checks ownership, and only unexpected child loss requests recovery',async()=>{
+ let recoveries=0;const f=setup({platform:'win32',onCompanionUnavailable:()=>{recoveries++;}});await f.manager.start();
+ const messages=[];f.child.send=(message,callback)=>{messages.push(message.type);if(message.type==='huikan-quit')f.child.emit('exit',0);callback?.(null);};
+ assert.equal(await f.manager.notifyWorkbenchHidden(),true);assert.deepEqual(messages,['huikan-workbench-hidden']);
+ f.child.emit('exit',1);assert.equal(recoveries,1);assert.equal(await f.manager.notifyWorkbenchHidden(),false);
+ await f.manager.start();await f.manager.close();assert.equal(recoveries,1,'Intentional shutdown must not reopen a hidden workbench');
 });
