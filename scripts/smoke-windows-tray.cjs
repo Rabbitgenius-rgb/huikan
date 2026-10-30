@@ -109,7 +109,7 @@ async function main() {
   const directory = path.join(base, 'bridge');
   const env = {...process.env, HUIKAN_DATA_HOME:path.join(base, 'desktop'), HUIKAN_COMPANION_HOME:path.join(base, 'companion'),
     MENGCANG_RECALL_USER_DATA:path.join(base, 'companion'), MENGCANG_RECALL_BRIDGE_DIR:directory,
-    HUIKAN_DISCOVERY_FILE:path.join(base, 'discovery', 'connection.json'), CODEX_HOME:path.join(base, 'codex')};
+    HUIKAN_DISCOVERY_FILE:path.join(base, 'discovery', 'connection.json'), CODEX_HOME:path.join(base, 'codex'), DSH_HOME:path.join(base, 'harness')};
   for (const key of Object.keys(env)) if (['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'MENGCANG_RECALL_NATIVE_UI', 'MENGCANG_RECALL_DIAGNOSTICS'].includes(key) || /(?:^|_)(?:API_KEY|TOKEN|SECRET|PASSWORD)$/.test(key)) delete env[key];
   const local = (service, method, params = {}) => callPrivate({directory, service, method, params, timeoutMs:2500});
   let workbench, parent, companion, mcp, mcpLines, mcpId = 0, childPid = null;
