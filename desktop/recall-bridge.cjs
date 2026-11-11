@@ -10,7 +10,7 @@ function createRecallDispatcher({getWindow,getWorkspaceId,isQuitting=()=>false,t
   let ready=null,closed=false,generation=0;const pending=new Map();
   const trusted=event=>{const contents=getWindow()?.webContents;return contents&&!contents.isDestroyed()&&event.sender===contents&&trustedFrame(event);};
   function rejectPending(error){for(const [id,entry] of pending){clearTimeout(entry.timer);pending.delete(id);entry.reject(error);}}
-  const workspaceChanged=()=>failure('WORKSPACE_CHANGED','梦藏资料库正在切换，请稍后使用原请求重试');
+  const workspaceChanged=()=>failure('WORKSPACE_CHANGED','回看资料库正在切换，请稍后使用原请求重试');
   function invalidate(){ready=null;generation++;rejectPending(workspaceChanged());}
   function reconcile(){
     const contents=getWindow()?.webContents;
@@ -21,8 +21,8 @@ function createRecallDispatcher({getWindow,getWorkspaceId,isQuitting=()=>false,t
   return {
     status(){return availability()?{ready:true,workspaceId:ready.workspaceId}:{ready:false};},
     ready(event,value){
-      if(!trusted(event))throw failure('FORBIDDEN','只有梦藏主窗口可以登记资料库');
-      if(!value||typeof value.ready!=='boolean'||typeof value.workspaceId!=='string'||!value.workspaceId)throw failure('WORKSPACE_CHANGED','梦藏工作区身份不匹配');
+      if(!trusted(event))throw failure('FORBIDDEN','只有回看主窗口可以登记资料库');
+      if(!value||typeof value.ready!=='boolean'||typeof value.workspaceId!=='string'||!value.workspaceId)throw failure('WORKSPACE_CHANGED','回看工作区身份不匹配');
       // The main process may have switched its workspace before the old
       // renderer's cleanup arrives. Invalidate using that current identity.
       reconcile();
@@ -31,13 +31,13 @@ function createRecallDispatcher({getWindow,getWorkspaceId,isQuitting=()=>false,t
         // A delayed cleanup must never revoke the newly registered workspace.
         return {accepted:!ready};
       }
-      if(closed)throw failure('LIBRARY_CLOSED','梦藏已关闭，请重新打开后重试');
-      if(value.workspaceId!==getWorkspaceId())throw failure('WORKSPACE_CHANGED','梦藏工作区身份不匹配');
+      if(closed)throw failure('LIBRARY_CLOSED','回看已关闭，请重新打开后重试');
+      if(value.workspaceId!==getWorkspaceId())throw failure('WORKSPACE_CHANGED','回看工作区身份不匹配');
       invalidate();ready={contents:event.sender,workspaceId:value.workspaceId,generation};
       return {accepted:true};
     },
     async call(method,params){
-      if(!availability())throw failure(isQuitting()?'APP_QUITTING':'LIBRARY_NOT_READY',isQuitting()?'梦藏正在完成保存并退出，请稍后重试':'请打开梦藏并等待资料库就绪');
+      if(!availability())throw failure(isQuitting()?'APP_QUITTING':'LIBRARY_NOT_READY',isQuitting()?'回看正在完成保存并退出，请稍后重试':'请打开回看并等待资料库就绪');
       const commandId=randomUUID(),target=ready;
       return new Promise((resolve,reject)=>{
         const timer=setTimeout(()=>{pending.delete(commandId);reject(failure('RECALL_TIMEOUT','尚未收到保存结果；请保留请求并使用原请求重试'));},timeoutMs);
@@ -47,7 +47,7 @@ function createRecallDispatcher({getWindow,getWorkspaceId,isQuitting=()=>false,t
       });
     },
     result(event,value){
-      if(!trusted(event))throw failure('FORBIDDEN','只有梦藏主窗口可以返回收藏结果');
+      if(!trusted(event))throw failure('FORBIDDEN','只有回看主窗口可以返回收藏结果');
       reconcile();
       const entry=pending.get(value?.commandId);
       if(!entry||entry.contents!==event.sender||entry.workspaceId!==value.workspaceId||entry.workspaceId!==getWorkspaceId()||entry.generation!==ready?.generation)return {accepted:false};
@@ -57,7 +57,7 @@ function createRecallDispatcher({getWindow,getWorkspaceId,isQuitting=()=>false,t
       if(value.ok)entry.resolve(value.result);else entry.reject(failure(typeof value.error?.code==='string'?value.error.code:'RECALL_SAVE_FAILED',typeof value.error?.message==='string'?value.error.message:'保存未完成，请重试'));
       return {accepted:true};
     },
-    close(){closed=true;ready=null;rejectPending(failure('LIBRARY_CLOSED','梦藏已关闭，请重新打开后重试'));},
+    close(){closed=true;ready=null;rejectPending(failure('LIBRARY_CLOSED','回看已关闭，请重新打开后重试'));},
   };
 }
 

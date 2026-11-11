@@ -1,8 +1,8 @@
 const test=require('node:test'),assert=require('node:assert/strict'),{EventEmitter}=require('node:events');
 const {createConnectionManager}=require('../desktop/connection-manager.cjs');
-function setup({running=null,ready=true,detected=true,publishError=null,platform=process.platform,detectReason,onOpenWorkbench,onQuitRequested,onCompanionUnavailable}={}){
+function setup({running=null,ready=true,detected=true,publishError=null,platform=process.platform,detectReason,onOpenWorkbench,onQuitRequested,onCompanionUnavailable,onShortcutIssue}={}){
  let settings={autoConnect:true,recognizeContent:true,showRecommendations:true},starts=0,released=0,child;
- const manager=createConnectionManager({directory:'/test/bridge',companionDirectory:'/test/companion',companionPath:'/test/companion-app',executable:'/test/electron',env:{HUIKAN_DISCOVERY_FILE:'/test/connection.json'},platform,onOpenWorkbench,onQuitRequested,onCompanionUnavailable,backgroundReadyTimeoutMs:0,preferences:{get:()=>({...settings}),async set(value){settings={...settings,...value};return settings;}},getLibraryReady:()=>ready,detect:async()=>({installed:detected,supported:detected,version:detected?'0.2.1-rc.3':null,reason:detectReason}),call:async()=>{if(running)return running;throw Object.assign(Error(),{code:'SERVICE_UNAVAILABLE'});},publish:async()=>{if(publishError)throw publishError;return{async close(){released++;}};},spawnProcess:()=>{starts++;child=new EventEmitter();child.connected=true;child.send=()=>child.emit('exit',0);return child;}});
+ const manager=createConnectionManager({directory:'/test/bridge',companionDirectory:'/test/companion',companionPath:'/test/companion-app',executable:'/test/electron',env:{HUIKAN_DISCOVERY_FILE:'/test/connection.json'},platform,onOpenWorkbench,onQuitRequested,onCompanionUnavailable,onShortcutIssue,backgroundReadyTimeoutMs:0,preferences:{get:()=>({...settings}),async set(value){settings={...settings,...value};return settings;}},getLibraryReady:()=>ready,detect:async()=>({installed:detected,supported:detected,version:detected?'0.2.1-rc.3':null,reason:detectReason}),call:async()=>{if(running)return running;throw Object.assign(Error(),{code:'SERVICE_UNAVAILABLE'});},publish:async()=>{if(publishError)throw publishError;return{async close(){released++;}};},spawnProcess:()=>{starts++;child=new EventEmitter();child.connected=true;child.send=()=>child.emit('exit',0);return child;}});
  return{manager,get starts(){return starts;},get released(){return released;},set running(value){running=value;},set ready(value){ready=value;},get child(){return child;}};
 }
 test('a live companion is reused, and an installed application alone is never called connected',async()=>{const f=setup({running:{protocol:1,connected:false}});await f.manager.start();assert.equal(f.starts,0);assert.notEqual((await f.manager.status()).state,'connected');f.running={protocol:1,connected:true};assert.equal((await f.manager.status()).state,'connected');f.ready=false;assert.notEqual((await f.manager.status()).state,'connected');await f.manager.close();});
@@ -142,4 +142,49 @@ test('background hint delivery checks ownership, and only unexpected child loss 
  assert.equal(await f.manager.notifyWorkbenchHidden(),true);assert.deepEqual(messages,['huikan-workbench-hidden']);
  f.child.emit('exit',1);assert.equal(recoveries,1);assert.equal(await f.manager.notifyWorkbenchHidden(),false);
  await f.manager.start();await f.manager.close();assert.equal(recoveries,1,'Intentional shutdown must not reopen a hidden workbench');
+});
+
+test('Mac menu readiness and actions are accepted only from the owned running companion',async()=>{
+ let opens=0,quits=0;
+ const f=setup({platform:'darwin',onOpenWorkbench:()=>{opens++;},onQuitRequested:()=>{quits++;}});
+ await f.manager.start();const child=f.child;
+ assert.equal(await f.manager.prepareForBackground(),false);
+ f.running={protocol:1};child.emit('message',{type:'huikan-tray-ready'});
+ assert.equal(await f.manager.prepareForBackground(),true);
+ const messages=[];child.send=(message,callback)=>{messages.push(message.type);if(message.type==='huikan-quit')child.emit('exit',0);callback?.(null);};
+ assert.equal(f.manager.notifyLibraryChanged(),true);assert.deepEqual(messages,['huikan-library-changed']);
+ child.emit('message',{type:'huikan-open-workbench'});child.emit('message',{type:'huikan-request-quit'});await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(opens,1);assert.equal(quits,1);
+ await f.manager.close();assert.equal(f.manager.notifyLibraryChanged(),false);
+ child.emit('message',{type:'huikan-open-workbench'});await new Promise(resolve=>setImmediate(resolve));assert.equal(opens,1);
+});
+
+test('Mac shortcut warnings validate the owned child and return a supported choice without blocking readiness',async()=>{
+ let choose,reported;
+ const f=setup({platform:'darwin',onShortcutIssue:value=>{reported=value;return new Promise(resolve=>{choose=resolve;});}});
+ await f.manager.start();const child=f.child,messages=[];
+ child.send=(value,callback)=>{messages.push(value);if(value.type==='huikan-quit')child.emit('exit',0);callback?.(null);};
+ const issue={type:'huikan-shortcut-issue',accelerator:'Command+Shift+K',registered:false,error:'已被占用',label:'untrusted label'};
+ child.emit('message',{...issue,accelerator:'Command+Q'});await new Promise(resolve=>setImmediate(resolve));assert.equal(reported,undefined);
+ child.emit('message',issue);await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(reported.label,'⌘⇧K');assert.equal(reported.choices.length,3);
+ f.running={protocol:1};child.emit('message',{type:'huikan-tray-ready'});
+ assert.equal(await f.manager.prepareForBackground(),true,'the warning must not hold background readiness');
+ choose('Command+Alt+K');await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(messages,[{type:'huikan-shortcut-select',accelerator:'Command+Alt+K'}]);
+ await f.manager.close();reported=null;
+ child.emit('message',issue);await new Promise(resolve=>setImmediate(resolve));assert.equal(reported,null);
+});
+
+test('late or unsupported Mac shortcut choices cannot reach a stopped child',async()=>{
+ for(const result of ['Command+Q','Command+Alt+K']){
+  let choose;const f=setup({platform:'darwin',onShortcutIssue:()=>new Promise(resolve=>{choose=resolve;})});
+  await f.manager.start();const child=f.child,messages=[];
+  child.send=(value,callback)=>{messages.push(value.type);if(value.type==='huikan-quit')child.emit('exit',0);callback?.(null);};
+  child.emit('message',{type:'huikan-shortcut-issue',accelerator:'Command+Shift+K',registered:false,error:'已被占用'});
+  await new Promise(resolve=>setImmediate(resolve));
+  if(result==='Command+Alt+K')await f.manager.close();
+  choose(result);await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(messages.includes('huikan-shortcut-select'),false);await f.manager.close();
+ }
 });

@@ -25,9 +25,19 @@ function showWorkbench(){
  activationId++;
  hiddenToTray=false;
  if(!win||win.isDestroyed()||drained)return;
+ if(process.platform==='darwin')app.show?.();
  if(win.isMinimized())win.restore();win.show();win.focus();
 }
 function restoreHiddenWorkbench(){if(hiddenToTray&&!quitting&&!drained)showWorkbench();}
+async function showRecallShortcutIssue(shortcut){
+ if(quitting||drained||!win||win.isDestroyed())return null;
+ showWorkbench();
+ const {response}=await dialog.showMessageBox(win,{type:'warning',title:'回看快捷键提示',
+  message:shortcut.registered?'快捷键设置未完成，当前组合仍可使用':`无法启用快捷键 ${shortcut.label}`,
+  detail:`${shortcut.error}\n请选择一个组合，或稍后右键菜单栏的回看图标更改。`,
+  buttons:[...shortcut.choices.map(choice=>choice.label),'稍后'],defaultId:Math.max(0,shortcut.choices.findIndex(choice=>choice.accelerator!==shortcut.accelerator)),cancelId:shortcut.choices.length,noLink:true});
+ return quitting||drained?null:shortcut.choices[response]?.accelerator||null;
+}
 function hideWorkbench(){
  if(hideTask)return hideTask;
  const activation=activationId;
@@ -36,7 +46,8 @@ function hideWorkbench(){
   if(quitting||drained||sessionEnding||activation!==activationId||!win||win.isDestroyed())return;
   if(!ready){
    showWorkbench();
-   const {response}=await dialog.showMessageBox(win,{type:'info',title:'后台回看尚未就绪',message:'工作台暂时保持打开，避免关闭后找不到回看。',detail:preferences.get().autoConnect?'请在连接与识别设置中重新检测，恢复托盘入口后再关闭工作台。':'请在连接与识别设置中开启“启动时自动连接”，准备好托盘入口后再关闭工作台。',buttons:['保留工作台','退出回看'],defaultId:0,cancelId:0,noLink:true});
+   const entry=process.platform==='darwin'?'菜单栏':'托盘';
+   const {response}=await dialog.showMessageBox(win,{type:'info',title:'后台回看尚未就绪',message:'工作台暂时保持打开，避免关闭后找不到回看。',detail:preferences.get().autoConnect?`请在连接与识别设置中重新检测，恢复${entry}入口后再关闭工作台。`:`请在连接与识别设置中开启“启动时自动连接”，准备好${entry}入口后再关闭工作台。`,buttons:['保留工作台','退出回看'],defaultId:0,cancelId:0,noLink:true});
    if(response===1&&!quitting&&!drained)await quit();return;
   }
   hiddenToTray=true;win.hide();
@@ -77,7 +88,8 @@ if(!app.requestSingleInstanceLock()){app.quit();}else{
   const selectedFile=path.join(app.getPath('userData'),'huikan-harness-v1.json');
   let initialSelectedPath=process.env.HUIKAN_HARNESS_APP||null;
   if(!initialSelectedPath)try{const saved=JSON.parse(await fs.readFile(selectedFile,'utf8'));if(typeof saved.selectedPath==='string'&&path.isAbsolute(saved.selectedPath))initialSelectedPath=saved.selectedPath;}catch{}
-  connection=createConnectionManager({directory:bridgeDirectory,companionDirectory,companionPath:path.join(__dirname,'companion'),companionArguments:app.isPackaged?['--huikan-companion']:[path.join(__dirname,'companion')],executable:process.execPath,preferences,initialSelectedPath,bundledPlugin:{packagePath:path.join(__dirname,'plugin/recall-plugin.tgz'),name:pluginManifest.name,version:pluginManifest.version},getLibraryReady:()=>bridge.status().ready,onChange:()=>emit({type:'connectionChanged'}),onOpenWorkbench:()=>{if(!quitting)showWorkbench();},onQuitRequested:quit,onCompanionUnavailable:restoreHiddenWorkbench});
+  connection=createConnectionManager({directory:bridgeDirectory,companionDirectory,companionPath:path.join(__dirname,'companion'),companionArguments:app.isPackaged?['--huikan-companion']:[path.join(__dirname,'companion')],executable:process.execPath,preferences,initialSelectedPath,bundledPlugin:{packagePath:path.join(__dirname,'plugin/recall-plugin.tgz'),name:pluginManifest.name,version:pluginManifest.version},getLibraryReady:()=>bridge.status().ready,onChange:()=>emit({type:'connectionChanged'}),onOpenWorkbench:()=>{if(!quitting)showWorkbench();},onQuitRequested:quit,onCompanionUnavailable:restoreHiddenWorkbench,onShortcutIssue:showRecallShortcutIssue});
+  handle('recallLibraryChanged',value=>{if(value?.workspaceId!==identity.id||!Number.isSafeInteger(value?.revision)||value.revision<0)throw Error('回看资料版本无效');return {notified:connection.notifyLibraryChanged()};});
   handle('settingsGet',()=>preferences.get());handle('settingsSet',patch=>connection.configure(patch));
   handle('connectionStatus',()=>connection.status());handle('connectionRetry',()=>connection.retry());
   handle('connectionChoose',async()=>{if(!['darwin','win32'].includes(process.platform))throw Error('此平台暂不支持自动识别 Harness。');const result=await dialog.showOpenDialog(win,{title:'选择 DeepSeek Harness',properties:['openFile'],filters:[process.platform==='win32'?{name:'Harness 应用程序',extensions:['exe']}:{name:'macOS 应用',extensions:['app']}]});if(result.canceled)return {};const target=result.filePaths[0];if(!await inspectHarness(target))throw Error('所选应用不是可识别的 DeepSeek Harness。');await fs.writeFile(selectedFile,JSON.stringify({selectedPath:target}),{mode:0o600});await connection.selectApp(target);return connection.retry();});
@@ -88,9 +100,9 @@ if(!app.requestSingleInstanceLock()){app.quit();}else{
   await connection.start();
   if(process.platform==='win32'){connectionTimer=setInterval(()=>{if(!quitting)void connection.reconcile().catch(()=>{});},5000);connectionTimer.unref();}
   win.on('session-end',()=>{sessionEnding=true;});
-  win.on('close',event=>{if(sessionEnding)return;if(!drained){event.preventDefault();if(process.platform==='win32'&&!quitting)void hideWorkbench();else void quit();}});
-  Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'回看',submenu:[{role:'about',label:'关于回看工作台'},{type:'separator'},{role:'hide',label:'隐藏回看'},{role:'quit',label:'退出回看'}]},{label:'编辑',submenu:[{role:'copy',label:'复制'},{role:'paste',label:'粘贴'},{role:'selectAll',label:'全选'}]},{label:'窗口',submenu:[{role:'minimize',label:'最小化'},{role:'zoom',label:'缩放'}]}]));
+  win.on('close',event=>{if(sessionEnding)return;if(!drained){event.preventDefault();if(['darwin','win32'].includes(process.platform)&&!quitting)void hideWorkbench();else void quit();}});
+  Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'回看',submenu:[{role:'about',label:'关于回看工作台'},{label:'打开回看工作台',click:showWorkbench},{type:'separator'},{role:'hide',label:'隐藏回看'},{role:'quit',label:'退出回看'}]},{label:'编辑',submenu:[{role:'copy',label:'复制'},{role:'paste',label:'粘贴'},{role:'selectAll',label:'全选'}]},{label:'窗口',submenu:[{role:'minimize',label:'最小化'},{role:'zoom',label:'缩放'}]}]));
   await win.loadURL('mengcang://app/');
  }).catch(async error=>{await connection?.close().catch(()=>{});presentation?.close();await bridge?.close().catch(()=>{});dialog.showErrorBox('回看未能打开',error.message);drained=true;app.quit();});
- app.on('before-quit',event=>{if(sessionEnding)return;if(!drained){event.preventDefault();void quit();}});app.on('window-all-closed',()=>app.quit());app.on('second-instance',()=>{if(!quitting)showWorkbench();});
+ app.on('before-quit',event=>{if(sessionEnding)return;if(!drained){event.preventDefault();void quit();}});app.on('window-all-closed',()=>app.quit());app.on('second-instance',()=>{if(!quitting)showWorkbench();});app.on('activate',()=>{if(!quitting)showWorkbench();});
 }

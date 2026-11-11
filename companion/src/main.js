@@ -6,20 +6,23 @@ const { createRecallService } = require('./recall-service.cjs');
 const { panelPosition } = require('./panel-position.cjs');
 const { glassWindowOptions, attachGlassMaterial } = require('./window-material.cjs');
 const { startPrivateServer, callPrivate } = require('./transport');
-app.setName('梦藏回看候选');
+// Preserve the legacy standalone fallback directory when changing the display
+// name. Managed desktop launches already supply their existing absolute path.
+const legacyUserData = () => path.join(app.getPath('appData'), '梦藏回看候选');
+app.setName('回看浮窗');
 const candidateRoot = path.resolve(__dirname, '../..');
 let candidateConfig = {};
 try { candidateConfig = require('../candidate-config.json'); } catch (error) { if (error.code !== 'MODULE_NOT_FOUND') throw error; }
-const userData = process.env.MENGCANG_RECALL_USER_DATA || candidateConfig.userDataPath || (app.isPackaged ? app.getPath('userData') : path.join(candidateRoot, 'runtime/sticky-user'));
-const bridgeDirectory = process.env.MENGCANG_RECALL_BRIDGE_DIR || candidateConfig.bridgeDirectory || (app.isPackaged ? (process.platform === 'darwin' ? path.join(os.homedir(), 'Library/Application Support/Mengcang Recall/bridge') : path.join(app.getPath('userData'), 'bridge')) : path.join(candidateRoot, 'runtime/bridge'));
+const userData = process.env.MENGCANG_RECALL_USER_DATA || candidateConfig.userDataPath || (app.isPackaged ? legacyUserData() : path.join(candidateRoot, 'runtime/sticky-user'));
+const bridgeDirectory = process.env.MENGCANG_RECALL_BRIDGE_DIR || candidateConfig.bridgeDirectory || (app.isPackaged ? (process.platform === 'darwin' ? path.join(os.homedir(), 'Library/Application Support/Mengcang Recall/bridge') : path.join(userData, 'bridge')) : path.join(candidateRoot, 'runtime/bridge'));
 if (!path.isAbsolute(userData) || !path.isAbsolute(bridgeDirectory)) throw Error('回看数据路径必须是绝对路径');
 app.setPath('userData', userData);
 const diagnosticEnabled = process.env.MENGCANG_RECALL_DIAGNOSTICS === '1';
 const diagnostics = require('./window-diagnostics.cjs').createWindowDiagnostics({ enabled: diagnosticEnabled, userData, app, BrowserWindow });
-let bridge, refreshTimer, quitAllowed = false;
+let bridge, refreshTimer, connectionTimer, refreshDebounce, refreshRequested = false, refreshingNotification = false, quitAllowed = false;
 const primary = app.requestSingleInstanceLock();
 if (!primary) app.quit();
-if(process.send){process.on('message',value=>{if(value?.type==='huikan-quit')app.quit();else if(value?.type==='huikan-workbench-hidden')notifyWorkbenchHidden();});process.once('disconnect',()=>app.quit());}
+if(process.send){process.on('message',value=>{if(value?.type==='huikan-quit')app.quit();else if(value?.type==='huikan-workbench-hidden')notifyWorkbenchHidden();else if(value?.type==='huikan-library-changed')requestLibraryRefresh();else if(value?.type==='huikan-shortcut-select'&&process.platform==='darwin'&&recallShortcut)void changeRecallShortcut(value.accelerator);});process.once('disconnect',()=>app.quit());}
 const { state, PRELOAD, pinnedIds } = require('./state');
 const settings = require('./settings');
 const stickies = require('./stickies');
@@ -60,7 +63,7 @@ function trayIcon() {
 
 function createPanel() {
   const win = new BrowserWindow({
-    title: '梦藏 · 对话回看浮窗',
+    title: '回看 · 对话回看浮窗',
     width: PANEL_W,
     height: PANEL_H,
     show: false,
@@ -72,9 +75,9 @@ function createPanel() {
     skipTaskbar: true,
     alwaysOnTop: true,
     hasShadow: true,
-    webPreferences: { preload: PRELOAD, contextIsolation: true, sandbox: true, accessibleTitle: '梦藏对话回看条目' },
+    webPreferences: { preload: PRELOAD, contextIsolation: true, sandbox: true, accessibleTitle: '回看对话回看条目' },
   });
-  win.accessibleTitle = '梦藏 · 对话回看浮窗';
+  win.accessibleTitle = '回看 · 对话回看浮窗';
   attachGlassMaterial(win);
   if (process.platform !== 'win32') win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   protectWindow(win);
@@ -140,9 +143,22 @@ function showPanel() {
   win.webContents.send('pinned:change', pinnedIds());
 }
 
-function managedByWorkbench() { return process.platform === 'win32' && typeof process.send === 'function' && process.connected !== false; }
-function sendWorkbench(type) {
-  try { process.send({ type }, error => { if (error) app.quit(); }); }
+function managedByWorkbench() { return ['darwin','win32'].includes(process.platform) && typeof process.send === 'function' && process.connected !== false; }
+function requestLibraryRefresh() {
+  refreshRequested = true;
+  if (!state.service || refreshDebounce || refreshingNotification || state.quitting) return;
+  refreshDebounce = setTimeout(async () => {
+    refreshDebounce = null; refreshRequested = false;
+    if (state.quitting) return;
+    refreshingNotification = true;
+    try { await state.service.refresh({ afterCurrent: true }); }
+    catch { /* The service exposes the read error; the periodic fallback remains. */ }
+    finally { refreshingNotification = false; if (refreshRequested && !state.quitting) requestLibraryRefresh(); }
+  }, 100);
+  refreshDebounce.unref();
+}
+function sendWorkbench(type, details = {}) {
+  try { process.send({ ...details, type }, error => { if (error) app.quit(); }); }
   catch { app.quit(); }
 }
 function requestQuit() { if (managedByWorkbench()) sendWorkbench('huikan-request-quit'); else app.quit(); }
@@ -151,7 +167,10 @@ function notifyTrayReady() {
   const notify = () => {
     if (!state.tray.isDestroyed() && !state.panel.isDestroyed() && !state.panel.webContents.isLoading() && !state.quitting) sendWorkbench('huikan-tray-ready');
   };
-  if (state.panel.webContents.isLoading()) state.panel.webContents.once('did-finish-load', notify);
+  // On macOS isLoading() can remain true inside did-finish-load until the
+  // subsequent did-stop-loading event. Waiting for that event avoids losing
+  // the one readiness notification and blocking background mode forever.
+  if (state.panel.webContents.isLoading()) state.panel.webContents.once('did-stop-loading', notify);
   else notify();
 }
 function notifyWorkbenchHidden() {
@@ -165,15 +184,30 @@ function notifyWorkbenchHidden() {
 }
 function updateTrayTooltip() {
   const shortcut = recallShortcut?.status();
-  state.tray?.setToolTip(shortcut ? `回看 · 对话摘录\n${shortcut.registered ? shortcut.label : '快捷键未启用，请右键设置'}` : '梦藏 · 对话回看');
+  state.tray?.setToolTip(shortcut ? `回看 · 对话摘录\n${shortcut.registered ? shortcut.label : '快捷键未启用，请右键设置'}` : '回看 · 对话回看');
 }
 async function changeRecallShortcut(accelerator) {
   try {
     const result = await recallShortcut.select(accelerator); updateTrayTooltip();
-    if (result.error) await dialog.showMessageBox({ type: 'warning', title: '快捷键未更改', message: result.error, buttons: ['知道了'], noLink: true });
+    if (result.error) {
+      if (process.platform === 'darwin') await notifyShortcutIssue();
+      else await dialog.showMessageBox({ type: 'warning', title: '快捷键未更改', message: result.error, buttons: ['知道了'], noLink: true });
+    }
   } catch (error) {
     await dialog.showMessageBox({ type: 'warning', title: '快捷键未更改', message: error.message, buttons: ['知道了'], noLink: true }).catch(() => {});
   }
+}
+async function notifyShortcutIssue() {
+  const shortcut = recallShortcut?.status();
+  if (process.platform !== 'darwin' || !shortcut?.error || state.quitting) return;
+  // Managed companions are hidden background apps. Anchor their warning to
+  // the workbench so it remains visible and can offer replacement keys.
+  if (managedByWorkbench()) { sendWorkbench('huikan-shortcut-issue', shortcut); return; }
+  const result = await dialog.showMessageBox({ type: 'warning', title: '回看快捷键提示',
+    message: shortcut.registered ? '快捷键设置未完成，当前组合仍可使用' : `无法启用快捷键 ${shortcut.label}`,
+    detail: `${shortcut.error}\n也可点击菜单栏的“回看”图标打开浮窗。`,
+    buttons: ['选择其他快捷键', '稍后'], defaultId: 0, cancelId: 1, noLink: true });
+  if (result.response === 0 && !state.quitting && state.tray && !state.tray.isDestroyed()) state.tray.popUpContextMenu(buildTrayMenu());
 }
 function buildTrayMenu() {
   const shortcut = recallShortcut?.status();
@@ -191,7 +225,7 @@ function buildTrayMenu() {
     { label: '外观：始终 3D', type: 'radio', checked: state.mode === '3d', click: () => settings.setMode('3d') },
     { label: '外观：始终 2D（节能）', type: 'radio', checked: state.mode === '2d', click: () => settings.setMode('2d') },
     { type: 'separator' },
-    process.platform === 'win32' ? { label: '退出回看', click: requestQuit } : { label: '退出', role: 'quit' },
+    { label: '退出回看', click: requestQuit },
   ]);
 }
 
@@ -286,6 +320,13 @@ async function nativeAction(action) {
 if (primary) app.whenReady().then(async () => {
   nativeTheme.themeSource = 'light';
   if (process.platform === 'darwin') app.dock.hide();
+  if (process.platform === 'darwin') Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { label: '回看', submenu: [
+      { label: '打开回看浮窗', click: showPanel },
+      ...(managedByWorkbench() ? [{ label: '打开回看工作台', click: () => sendWorkbench('huikan-open-workbench') }] : []),
+      { type: 'separator' }, { label: '退出回看', accelerator: 'Command+Q', click: requestQuit },
+    ] }, { role: 'editMenu', label: '编辑' },
+  ]));
   appearance = await require('./appearance.cjs').createAppearance({userData,onChange:()=>{settings.broadcast(true);publishNative();}});
   settings.setAppearanceProvider(()=>appearance.get());
   state.service = await createRecallService({ userData, callDream: (method, params) => callPrivate({ directory: bridgeDirectory, service: 'mengcang', method, params, timeoutMs: 15000 }), onContext: diagnostics.context });
@@ -365,13 +406,23 @@ if (primary) app.whenReady().then(async () => {
   await stickies.restore();
   settings.start();
   bridge = await startPrivateServer({ directory: bridgeDirectory, service: 'sticky', handlers: {...state.service.handlers,appearanceGet:()=>appearance.get(),appearanceSet:value=>appearance.set(value),appearanceShow:()=>{showPanel();return {shown:true};}} });
-  refreshTimer = setInterval(() => { void state.service.refresh(); update(state.service.snapshot()); }, 4000);
+  // Commits notify us over the existing owned IPC channel. Keep a slow
+  // fallback for missed notifications, without a full library read per tick.
+  refreshTimer = setInterval(() => { void state.service.refresh().catch(() => {}); }, 30000);
   refreshTimer.unref();
+  let lastConnection = JSON.stringify(state.service.handlers.connectionStatus());
+  connectionTimer = setInterval(() => {
+    const next = JSON.stringify(state.service.handlers.connectionStatus());
+    if (next !== lastConnection) { lastConnection = next; update(state.service.snapshot()); }
+  }, 4000);
+  connectionTimer.unref();
+  if (refreshRequested) requestLibraryRefresh();
   if (nativeUIPath) {
     nativeFrontend = launchNativeFrontend({ appPath: nativeUIPath, onAction: nativeAction, onExit: () => { if (!state.quitting) app.quit(); } });
     publishNative();
-  } else if (process.platform === 'win32') {
-    recallShortcut = require('./recall-shortcut.cjs').createRecallShortcut({ directory: userData, globalShortcut, invoke: togglePanel });
+  } else if (process.platform === 'win32' || process.platform === 'darwin') {
+    const probe = process.platform === 'darwin' ? require('./mac-shortcut-probe.cjs').createMacShortcutProbe({ executable: path.join(candidateRoot, app.isPackaged ? 'mac-shortcut-probe' : 'desktop/build/mac-shortcut-probe') }) : undefined;
+    recallShortcut = require('./recall-shortcut.cjs').createRecallShortcut({ directory: userData, globalShortcut, invoke: togglePanel, probe });
     await recallShortcut.start(); updateTrayTooltip();
     if (hiddenHintRequested) notifyWorkbenchHidden();
   } else globalShortcut.register('CommandOrControl+Shift+K', togglePanel);
@@ -381,6 +432,8 @@ if (primary) app.whenReady().then(async () => {
     else state.panel.once('ready-to-show', showPanel);
   }
   notifyTrayReady();
+  // A conflict needs an explicit prompt, but must not delay background readiness.
+  void notifyShortcutIssue().catch(error => console.error('Recall shortcut prompt failed:', error.message));
   console.log(nativeUIPath ? 'Recall companion ready with native UI and cached Harness model topics.' : 'Recall companion ready.');
 }).catch(error => { console.error('Recall startup failed:', error.code || 'STARTUP_FAILED', error.message); quitAllowed = true; app.quit(); });
 
@@ -393,6 +446,8 @@ app.on('before-quit', event => {
     await stickies.persistAll();
     await appearance?.close();
     clearInterval(refreshTimer);
+    clearInterval(connectionTimer);
+    clearTimeout(refreshDebounce);
     nativeFrontend?.close();
     await bridge?.close();
     await topicOrganizer?.close();

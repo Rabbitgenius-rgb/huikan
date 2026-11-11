@@ -23,6 +23,18 @@
 
 ## 下载安装
 
+### Mac 0.3.4 本地预览改动
+
+此版本已在本地实现，公开下载仍以下方各发行页为准。
+
+- 首页、浮窗、便签和应用图标统一为“回看”；空资料库可直接进入 Codex 或 Harness 的连接设置。
+- Mac 关闭工作台后保留菜单栏、浮窗与本机连接。点击 Dock 图标，或在菜单栏回看的右键菜单选择“打开回看工作台”，即可继续使用；“退出回看”才会保存并结束后台服务。后台入口未就绪时，工作台会保留可见并提示处理。
+- 已提交的资料变更会通知浮窗更新，另外保留 30 秒一次的兜底检查。相同状态不再重复写盘；失败的写入仍可重试。旧资料目录、来源信息与连接协议继续兼容。
+- 切回同一 Harness 对话时会及时补读；焦点或标题变化不会丢弃同一来源的有效读取结果。Codex 明确选择当前线程时也会刷新，普通心跳不触发资料读取。
+- Mac 默认用 `⌘⇧K` 打开/收起浮窗。快捷键被占用时会显示提示；右键菜单栏的回看图标，在“唤出快捷键”中可改为 `⌘⌥K` 或 `⌘⇧Space`。选择会保存并在重启后恢复；改键失败时保留原有可用组合。
+
+Mac 图标源文件为 `desktop/assets/icon.svg`，系统图标为 `desktop/assets/icon.icns`。需要重新生成时，在 macOS 上运行 `swift scripts/create-app-icon.swift /tmp/huikan.iconset`，再运行 `iconutil -c icns /tmp/huikan.iconset -o desktop/assets/icon.icns`。
+
 [**下载 Windows 10/11 64 位安装程序（0.3.1）**](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.3.1/Huikan-0.3.1-windows-x64-setup.exe) · [发行说明](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.3.1)
 
 双击安装程序，按向导安装后打开“回看”。无需另装 Node.js；工作台和浮窗一起安装。Windows 安装包未做代码签名，首次运行可能显示“未知发布者”或 SmartScreen 提示；请核对下载来源为本项目的 GitHub 发行页。组织策略禁止运行未签名程序时，需要管理员按其策略处理。
@@ -79,6 +91,8 @@ npm --prefix ui run dev
 打开终端显示的本机地址。默认是空工作台；添加 `?demo=1` 可体验独立示例数据。示例使用独立存储身份，不导入正式摘录。
 
 ## 运行桌面工作台和浮窗
+
+Mac 桌面构建还需要 Xcode Command Line Tools，用于编译本机快捷键占用检测程序；安装后的应用无需安装这些工具。
 
 ```sh
 npm ci

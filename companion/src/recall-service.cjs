@@ -57,8 +57,8 @@ function topicTitle(value) {
   return title;
 }
 function itemOf(v) {
-  if (!object(v) || typeof v.due !== 'boolean') throw fail('INVALID_RESPONSE', '梦藏返回的回看条目无效');
-  if (['__proto__', 'prototype', 'constructor'].includes(v.id)) throw fail('INVALID_RESPONSE', '梦藏返回的条目标识无效');
+  if (!object(v) || typeof v.due !== 'boolean') throw fail('INVALID_RESPONSE', '回看返回的回看条目无效');
+  if (['__proto__', 'prototype', 'constructor'].includes(v.id)) throw fail('INVALID_RESPONSE', '回看返回的条目标识无效');
   return { id: string(v.id, 'item.id'), title: string(v.title, 'item.title', 500, true), text: string(v.text, 'item.text', 200000, true), savedAt: string(v.savedAt, 'savedAt', 100), due: v.due, externalSource: sourceOf(v.externalSource) };
 }
 const digest = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -72,6 +72,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
   const file = path.join(userData, 'recall-state.json');
   const events = new EventEmitter();
   let data = { version: 1, outbox: {}, receipts: {}, cache: {}, pinned: {}, topicAssignments: {}, readItems: {}, mode: 'auto', active: null };
+  let persistedJSON = null;
   try {
     const raw = JSON.parse(await fs.readFile(file, 'utf8'));
     if (!object(raw) || raw.version !== 1) throw Error('Unknown recall state');
@@ -83,6 +84,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     for (const pending of Object.values(data.outbox)) captureOf(pending.capture);
     if (data.active && (!object(data.active) || typeof data.active.instanceId !== 'string' || typeof data.active.sessionId !== 'string')) throw Error('Invalid active source');
     if (data.active?.provider === 'codex' && (!CODEX_INSTANCE.test(data.active.instanceId) || !CLIENT_ID.test(data.active.clientId || '') || !CODEX_THREAD.test(data.active.sessionId))) throw Error('Invalid Codex active source');
+    persistedJSON = JSON.stringify(data);
   } catch (e) { if (e.code !== 'ENOENT') throw fail('STATE_READ_FAILED', '回看本地状态无法读取；保留原文件，请检查后重试'); }
   let writes = Promise.resolve(), persistenceError = null, libraryError = null, generation = 0, refreshPromise = null, refreshKey = null, closed = false;
   const views = new Map(), codexClients = new Map(), inFlight = new Map(), navigations = new Map();
@@ -96,11 +98,14 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
   function persist() {
     const json = JSON.stringify(data);
     const task = writes.then(async () => {
+      // Compare inside the queue: an earlier in-flight write may differ from
+      // this snapshot. Advance this marker only after a durable replacement.
+      if (json === persistedJSON) { persistenceError = null; return; }
       const temp = `${file}.${crypto.randomUUID()}.tmp`;
       try {
         await fs.writeFile(temp, json, { mode: 0o600, flag: 'wx' });
         const handle = await fs.open(temp, 'r+'); try { await handle.sync(); } finally { await handle.close(); }
-        await fs.rename(temp, file); persistenceError = null;
+        await fs.rename(temp, file); persistedJSON = json; persistenceError = null;
       } catch (e) { await fs.rm(temp, { force: true }).catch(() => {}); persistenceError = errorOf(e); throw e; }
     });
     writes = task.catch(() => {});
@@ -122,7 +127,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     return { active, items, pending, connected: codexActive ? liveCodexClient(active.clientId) : !!liveView(view), supported: codexActive || (!!view && view.supported && SUPPORTED_VERSIONS.has(view.version)), libraryError, persistenceError, pinned: Object.keys(data.pinned), read: items.filter(item => data.readItems[item.id] === true).map(item => item.id), mode: data.mode };
   }
   const changed = () => events.emit('change', snapshot());
-  async function refresh() {
+  async function refresh({ afterCurrent = false } = {}) {
     const active = data.active;
     // Pinned windows remain visible across thread switches. Reconcile their
     // source lists too, including when Harness has no active conversation.
@@ -133,15 +138,22 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
       if (source) sources.set(keyOf(source), source);
     }
     if (!sources.size) { changed(); return; }
-    if (refreshPromise && refreshKey === keyOf(active)) return refreshPromise;
+    if (refreshPromise && refreshKey === keyOf(active)) {
+      if (!afterCurrent) return refreshPromise;
+      // A commit or renewed source selection may arrive after the current
+      // request took its snapshot. Follow it with a fresh read.
+      await refreshPromise;
+      if (!closed) return refresh();
+      return;
+    }
     const requestGeneration = generation, requestKey = keyOf(active);
     const run = (async () => {
       const failures = [];
       await Promise.all([...sources].map(async ([sourceKey, source]) => { try {
         const result = await callDream('list', { instanceId: source.instanceId, sessionId: source.sessionId });
-        if (!Array.isArray(result?.items)) throw fail('INVALID_RESPONSE', '梦藏返回的回看列表无效');
+        if (!Array.isArray(result?.items)) throw fail('INVALID_RESPONSE', '回看返回的回看列表无效');
         const items = result.items.map(itemOf);
-        if (items.some(item => keyOf(item.externalSource) !== sourceKey)) throw fail('INVALID_RESPONSE', '梦藏返回了其他会话的条目');
+        if (items.some(item => keyOf(item.externalSource) !== sourceKey)) throw fail('INVALID_RESPONSE', '回看返回了其他会话的条目');
         if (closed || requestGeneration !== generation || requestKey !== keyOf(data.active)) return;
         if (!acceptRevision(result)) return;
         const ids = new Set(items.map(item => item.id)), removed = new Set();
@@ -182,9 +194,12 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
       const different = JSON.stringify(next) !== JSON.stringify(data.active);
       data.active = next;
       trace(true, newFocus ? 'new-focus-epoch' : 'current-view');
-      if (different) { generation++; await persist(); }
+      // Focus epochs and titles do not change the source of an in-flight list.
+      // Only a real conversation switch makes that result obsolete.
+      if (switched) generation++;
+      if (different) await persist();
       changed();
-      if (switched || (!refreshPromise && !previous)) void refresh();
+      if (switched || newFocus || (!refreshPromise && !previous)) void refresh({ afterCurrent: newFocus && !switched });
     } else trace(true, 'background-view');
     return { accepted: true, contextProtocol: 2 };
   }
@@ -214,12 +229,14 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     const previous = data.active;
     data.active = next;
     if (JSON.stringify(next) !== JSON.stringify(previous)) {
-      generation++;
+      if (switched) generation++;
       try { await persist(); } catch (error) { data.active = previous; changed(); throw error; }
     }
     client.instanceId = instanceId;
     changed();
-    if (switched) await refresh();
+    // Explicit tool selection also refreshes an already selected thread;
+    // codexHeartbeat remains a connection-only operation.
+    await refresh({ afterCurrent: !switched });
     return { accepted: true, provider: 'codex' };
   }
   async function deliver(capture) {
@@ -312,7 +329,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     const item = getItem(id); if (!item) return Promise.reject(fail('NOT_FOUND', '找不到回看条目'));
     const candidates = [...views.values()].filter(v => v.instanceId === item.externalSource.instanceId && liveView(v));
     const preferred = candidates.find(v => v.viewId === data.active?.viewId) || candidates.sort((a, b) => b.focusEpoch - a.focusEpoch || b.seenAt - a.seenAt)[0];
-    if (!preferred) return Promise.reject(fail('HARNESS_UNAVAILABLE', 'Harness 未连接或版本不兼容，原文仍保留在梦藏'));
+    if (!preferred) return Promise.reject(fail('HARNESS_UNAVAILABLE', 'Harness 未连接或版本不兼容，原文仍保留在回看'));
     const commandId = crypto.randomUUID();
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => { navigations.delete(commandId); reject(fail('NAVIGATION_TIMEOUT', '未能确认原文位置，请在 Harness 中检查')); }, navigationTimeoutMs);

@@ -106,7 +106,7 @@ function boundsFor(kind, anchor) {
 function createWindow(id, point) {
   const size = SIZES.note;
   const win = new BrowserWindow({
-    title: '梦藏 · 回看便签',
+    title: '回看 · 回看便签',
     x: Math.round(point.x - size.w / 2),
     y: Math.round(point.y - 20),
     width: size.w,
@@ -130,7 +130,7 @@ function createWindow(id, point) {
       accessibleTitle: '回看便签内容',
     },
   });
-  win.accessibleTitle = '梦藏 · 回看便签';
+  win.accessibleTitle = '回看 · 回看便签';
   win.setAlwaysOnTop(true, 'floating');
   if (process.platform !== 'win32') win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   protectWindow(win);

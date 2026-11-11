@@ -17,7 +17,7 @@ if(release){
 }
 const version=JSON.parse(await fs.readFile(path.join(root,'package.json'),'utf8')).version;
 const out=path.resolve(process.env.HUIKAN_PACKAGE_OUT||path.join(root,release?'../huikan-release/notarized':'../huikan-release'));
-const apps=await packager({dir:path.join(root,'desktop/build'),out,name:'回看',executableName:'Huikan',appBundleId:'io.huikan.desktop',appVersion:version,electronVersion:'44.4.5',platform:'darwin',arch:'arm64',asar:false,prune:false,overwrite:true,...releaseOptions,...(process.env.HUIKAN_ELECTRON_ZIP_DIR?{electronZipDir:path.resolve(process.env.HUIKAN_ELECTRON_ZIP_DIR)}:{})});
+const apps=await packager({dir:path.join(root,'desktop/build'),out,name:'回看',executableName:'Huikan',icon:path.join(root,'desktop/assets/icon.icns'),appBundleId:'io.huikan.desktop',appVersion:version,electronVersion:'44.4.5',platform:'darwin',arch:'arm64',asar:false,prune:false,overwrite:true,...releaseOptions,...(process.env.HUIKAN_ELECTRON_ZIP_DIR?{electronZipDir:path.resolve(process.env.HUIKAN_ELECTRON_ZIP_DIR)}:{})});
 const app=path.join(apps[0],'回看.app');
 if(release){
  execFileSync('/usr/bin/codesign',['--verify','--deep','--strict',app],{stdio:'inherit'});

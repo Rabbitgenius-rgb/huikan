@@ -14,6 +14,8 @@
 .recall-workbench.rw-workspace .rw-sidebar {width:230px;padding:28px 15px 16px;background:#f3f4f7;border-right:1px solid var(--rw-border);height:100svh;position:sticky;top:0}
 .rw-workspace .rw-brand {padding:0 12px!important;gap:11px;font-size:21px!important;font-weight:600;letter-spacing:2px;min-height:42px}
 .rw-workspace .rw-brand small {font-size:8px;letter-spacing:1.9px;color:#9297a2;margin-top:2px}
+.rw-workspace .rw-brand-icon {color:var(--rw-accent);flex:none}
+.rw-workspace .rw-empty-connect {display:flex;justify-content:center;gap:10px;margin-top:20px}
 .rw-workspace .rw-brand-mark {width:29px;height:32px;display:flex;align-items:center;justify-content:center;gap:3px;border:0;border-radius:0;transform:none;color:#4c5873}
 .rw-workspace .rw-brand-mark>span {display:block;width:5px;height:25px;border:1.2px solid currentColor;border-radius:4px;transform:rotate(-20deg);transform-origin:bottom}
 .rw-workspace .rw-brand-mark>span:nth-child(2) {height:30px;transform:none}

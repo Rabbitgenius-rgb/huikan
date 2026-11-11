@@ -34,7 +34,7 @@ async function seedDemo(session,identity){
 
 export default function RecallApp(){
  const [identity,setIdentity]=useState(null),[state,setState]=useState(null),[issue,setIssue]=useState('');
- const root=useRef(null),[showSettings,setShowSettings]=useState(false);
+ const root=useRef(null),[showSettings,setShowSettings]=useState(false),[settingsTarget,setSettingsTarget]=useState('codex');
  const appSettings=useAppSettings(api);
  useEffect(()=>{let live=true;document.title='回看工作台';
   const load=async()=>{try{const id=api?valueOf(await api.status())?.identity?.id:demo?'huikan-isolated-demo-v2':'huikan-browser-local-v1';if(!id)throw Error('未能确认回看资料身份，未打开其他资料。');if(live)setIdentity(id);}catch(error){if(live)setIssue(error.message);}};
@@ -56,8 +56,8 @@ export default function RecallApp(){
  async function commit(producer){try{const next=await session.commit(producer);setState({...next,drafts:session.drafts()});setIssue('');return next;}catch(error){setIssue(error.message);throw error;}}
  if(!state)return <main className="recall-loading" role="status"><h1>回看</h1><p>{issue||'正在读取本机摘录…'}</p>{issue&&<button onClick={()=>location.reload()}>重新打开</button>}</main>;
  return <div ref={root} className="recall-only-root">
-  <RecallWorkbench cards={recallCards(state)} archivedCards={archivedRecallCards(state)} model={state.drafts[WORKBENCH_KEY]} settings={appSettings.settings} onOpenSettings={()=>setShowSettings(true)} api={api} demo={demo} onUpdate={producer=>commit(current=>updateRecallModel(current,producer))} onDelete={id=>commit(current=>archiveRecall(current,id,true))} onRestore={id=>commit(current=>archiveRecall(current,id,false))}/>
-  {showSettings&&<ConnectionSettings api={api} settings={appSettings.settings} onUpdate={appSettings.update} error={appSettings.error} onClose={()=>setShowSettings(false)}/>}
+  <RecallWorkbench cards={recallCards(state)} archivedCards={archivedRecallCards(state)} model={state.drafts[WORKBENCH_KEY]} settings={appSettings.settings} onOpenSettings={(target='codex')=>{setSettingsTarget(target);setShowSettings(true);}} api={api} demo={demo} onUpdate={producer=>commit(current=>updateRecallModel(current,producer))} onDelete={id=>commit(current=>archiveRecall(current,id,true))} onRestore={id=>commit(current=>archiveRecall(current,id,false))}/>
+  {showSettings&&<ConnectionSettings api={api} settings={appSettings.settings} initialSection={settingsTarget} onUpdate={appSettings.update} error={appSettings.error} onClose={()=>setShowSettings(false)}/>}
   {issue&&<div className="recall-save-error" role="alert">{issue}<button onClick={()=>setIssue('')} aria-label="关闭保存提示">×</button></div>}
  </div>;
 }

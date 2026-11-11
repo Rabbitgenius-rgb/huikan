@@ -88,7 +88,7 @@ function syncHeight(){
 }
 function layout(){
  page=clamp(page,0,Math.max(0,Math.ceil(state.notes.length/PAGE)-1));
- main.button.setAttribute('aria-label',state.notes.length?`${state.title}，${state.notes.length}条笔记，点击${expanded?'收起':'展开'}`:'梦藏玻璃珠，当前对话还没有笔记');main.button.setAttribute('aria-expanded',String(expanded));
+ main.button.setAttribute('aria-label',state.notes.length?`${state.title}，${state.notes.length}条笔记，点击${expanded?'收起':'展开'}`:'回看玻璃珠，当前对话还没有笔记');main.button.setAttribute('aria-expanded',String(expanded));
  $('count').textContent=String(state.notes.length);$('count').hidden=!state.notes.length;
  children.forEach((o,i)=>{const index=page*PAGE+i,n=state.notes[index];o.id=n?.id;o.target=expanded&&n?smallR:0;o.button.hidden=!o.target;
  if(n){o.interior.clear();o.interior.add(makeRibbon(n,index));o.button.setAttribute('aria-label',`打开笔记：${n.title}`);let label=o.button.querySelector('.label');if(!label){label=document.createElement('span');label.className='label';o.button.appendChild(label);}label.textContent=n.topic==='整理中'?n.title:n.topic;}
