@@ -4,6 +4,7 @@ const {callPrivate}=require('../shared/private-rpc.cjs');
 const {publishConnection,discoveryFile}=require('../shared/connection-discovery.cjs');
 const {detectHarness}=require('./harness-detection.cjs');
 const {harnessHome,inspectPlugin}=require('./plugin-install-state.cjs');
+const {MAC_SHORTCUTS}=require('../companion/src/recall-shortcut.cjs');
 const SETUP_MESSAGES={
  'needs-initialization':'请先打开一次 DeepSeek Harness 完成初始化，再完全退出。回看会自动继续安装插件。',
  'close-harness':'已识别 DeepSeek Harness。请保存当前工作并完全退出 Harness，回看会自动安装插件，完成后重新打开即可连接。',
@@ -16,7 +17,7 @@ const SETUP_MESSAGES={
  installed:'回看插件已自动安装。请打开 DeepSeek Harness，即可连接使用。'
 };
 const setupError=message=>Object.assign(Error(message),{isSetupError:true});
-function createConnectionManager({directory,companionDirectory,companionPath,companionArguments=[companionPath],executable,preferences,getLibraryReady,bundledPlugin,initialSelectedPath=null,env=process.env,platform=process.platform,detect=detectHarness,call=callPrivate,publish=publishConnection,spawnProcess=spawn,runFile=execFile,onChange=()=>{},onOpenWorkbench=()=>{},onQuitRequested=()=>{},onCompanionUnavailable=()=>{},backgroundReadyTimeoutMs=5000}){
+function createConnectionManager({directory,companionDirectory,companionPath,companionArguments=[companionPath],executable,preferences,getLibraryReady,bundledPlugin,initialSelectedPath=null,env=process.env,platform=process.platform,detect=detectHarness,call=callPrivate,publish=publishConnection,spawnProcess=spawn,runFile=execFile,onChange=()=>{},onOpenWorkbench=()=>{},onQuitRequested=()=>{},onCompanionUnavailable=()=>{},onShortcutIssue=()=>null,backgroundReadyTimeoutMs=5000}){
  let advertisement,child,selectedPath=initialSelectedPath,lastError='',closed=false,starting=null,installing=null,reconciling=null,installationActive=false,installError='',installedThisSession=false;
  const stopping=new WeakSet(),trayReady=new WeakSet();
  const file=discoveryFile(env);
@@ -32,10 +33,18 @@ function createConnectionManager({directory,companionDirectory,companionPath,com
     const childEnv={...env,MENGCANG_RECALL_BRIDGE_DIR:directory,MENGCANG_RECALL_USER_DATA:companionDirectory,HUIKAN_DISCOVERY_FILE:file};delete childEnv.ELECTRON_RUN_AS_NODE;
     const launched=spawnProcess(executable,companionArguments,{env:childEnv,stdio:['ignore','ignore','ignore','ipc']});child=launched;
     launched.on('message',value=>{
-     if(child!==launched||closed||stopping.has(launched)||platform!=='win32')return;
+     if(child!==launched||closed||stopping.has(launched)||!['darwin','win32'].includes(platform))return;
      if(value?.type==='huikan-tray-ready'){trayReady.add(launched);return;}
+     if(value?.type==='huikan-shortcut-issue'&&platform==='darwin'){
+      const choice=MAC_SHORTCUTS.find(item=>item.accelerator===value.accelerator);
+      if(!choice||typeof value.registered!=='boolean'||typeof value.error!=='string'||!value.error||value.error.length>500)return;
+      void Promise.resolve().then(()=>onShortcutIssue({...choice,registered:value.registered,error:value.error,choices:MAC_SHORTCUTS})).then(accelerator=>{
+       if(child===launched&&!closed&&!stopping.has(launched)&&launched.connected&&MAC_SHORTCUTS.some(item=>item.accelerator===accelerator))launched.send({type:'huikan-shortcut-select',accelerator},()=>{});
+      }).catch(()=>{lastError='快捷键设置未完成，请右键菜单栏回看图标重试。';onChange();});
+      return;
+     }
      const action=value?.type==='huikan-open-workbench'?onOpenWorkbench:value?.type==='huikan-request-quit'?onQuitRequested:null;
-     if(action)void Promise.resolve().then(action).catch(()=>{lastError='托盘操作暂未完成，请打开工作台重试。';onCompanionUnavailable();onChange();});
+     if(action)void Promise.resolve().then(action).catch(()=>{lastError='回看菜单操作暂未完成，请打开工作台重试。';onCompanionUnavailable();onChange();});
     });
     launched.once('error',()=>{if(child===launched){lastError='浮窗未能启动，请重新尝试连接。';child=null;onCompanionUnavailable();onChange();}});
     launched.once('exit',()=>{if(child===launched){child=null;if(!stopping.has(launched)){lastError='浮窗连接已中断，请点击重新检测恢复。';onCompanionUnavailable();}}onChange();});
@@ -126,7 +135,7 @@ function createConnectionManager({directory,companionDirectory,companionPath,com
   })().finally(()=>{reconciling=null;});return reconciling;
  }
  async function prepareForBackground(){
-  if(platform!=='win32'||closed||!preferences.get().autoConnect)return false;
+  if(!['darwin','win32'].includes(platform)||closed||!preferences.get().autoConnect)return false;
   await start();const owned=child;
   if(!owned?.connected)return false;
   const deadline=Date.now()+backgroundReadyTimeoutMs;
@@ -143,6 +152,10 @@ function createConnectionManager({directory,companionDirectory,companionPath,com
   const owned=child;if(closed||!owned?.connected)return false;
   return new Promise(resolve=>{try{owned.send({type:'huikan-workbench-hidden'},error=>resolve(!error&&child===owned&&owned.connected));}catch{resolve(false);}});
  }
- return {start,status,install,reconcile,prepareForBackground,notifyWorkbenchHidden,async retry(){installError='';await start();await reconcile();return status();},async configure(patch){const before=preferences.get(),value=await preferences.set(patch);try{if(value.autoConnect)await start();else{await stop();onCompanionUnavailable();}return value;}catch(error){await preferences.set(before);throw error;}},async selectApp(value){selectedPath=value;installError='';installedThisSession=false;void reconcile();return status();},async close(){closed=true;try{await starting;await Promise.allSettled([installing,reconciling]);await stop();}catch(error){closed=false;throw error;}},get selectedPath(){return selectedPath;}};
+ function notifyLibraryChanged(){
+  const owned=child;if(closed||!owned?.connected)return false;
+  try{owned.send({type:'huikan-library-changed'},()=>{});return true;}catch{return false;}
+ }
+ return {start,status,install,reconcile,prepareForBackground,notifyWorkbenchHidden,notifyLibraryChanged,async retry(){installError='';await start();await reconcile();return status();},async configure(patch){const before=preferences.get(),value=await preferences.set(patch);try{if(value.autoConnect)await start();else{await stop();onCompanionUnavailable();}return value;}catch(error){await preferences.set(before);throw error;}},async selectApp(value){selectedPath=value;installError='';installedThisSession=false;void reconcile();return status();},async close(){closed=true;try{await starting;await Promise.allSettled([installing,reconciling]);await stop();}catch(error){closed=false;throw error;}},get selectedPath(){return selectedPath;}};
 }
 module.exports={createConnectionManager};

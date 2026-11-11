@@ -11,7 +11,7 @@ const excerptText=value=>value.replace(/\r\n?/g,'\n').trim();
 // This service only commits through the live workspace's existing transaction
 // owner. It never opens Chromium storage or creates a parallel library.
 export function createRecallLibrary({session,workspaceId,isCurrent=()=>true,hash=hashPayload,now=()=>new Date().toISOString()}) {
-  const assertCurrent=()=>{if(!isCurrent())throw recallError('WORKSPACE_CHANGED','梦藏工作区已变化，请重新连接后重试');};
+  const assertCurrent=()=>{if(!isCurrent())throw recallError('WORKSPACE_CHANGED','回看工作区已变化，请重新连接后重试');};
   const response=extra=>{assertCurrent();return {workspaceId,revision:session.revision,...extra};};
   function find(state,id) {const card=state.cards.find(card=>card.id===id);if(!active(state,card))throw recallError('RECALL_NOT_FOUND','这条回看信息不存在或已归档');return card;}
   return {async call(method,raw) {
@@ -59,6 +59,15 @@ export function createRecallLibrary({session,workspaceId,isCurrent=()=>true,hash
 export function connectRecallRenderer({api,session,workspaceId,isCurrent}) {
   if(!api?.recallReady||!api?.recallResult||!api?.subscribe)return ()=>{};
   let disposed=false;
+  let notifiedRevision=session.revision,stopChanges;
+  if(api.recallLibraryChanged&&session.subscribe)stopChanges=session.subscribe(()=>{
+    const revision=session.revision;
+    if(disposed||!isCurrent()||revision===notifiedRevision)return;
+    notifiedRevision=revision;
+    // A failed notification never changes a committed save; the companion has
+    // a low-frequency reconciliation fallback for lost notifications.
+    void Promise.resolve().then(()=>{if(!disposed&&isCurrent())return api.recallLibraryChanged({workspaceId,revision});}).catch(()=>{});
+  });
   const library=createRecallLibrary({session,workspaceId,isCurrent:()=>!disposed&&isCurrent()});
   const stop=api.subscribe(event=>{
     if(event?.type!=='recallRequest'||event.workspaceId!==workspaceId||disposed)return;
@@ -66,7 +75,7 @@ export function connectRecallRenderer({api,session,workspaceId,isCurrent}) {
       let reply;
       try {
         const result=await library.call(event.method,event.params);
-        if(disposed||!isCurrent())throw recallError('WORKSPACE_CHANGED','梦藏工作区已变化，请重新连接后重试');
+        if(disposed||!isCurrent())throw recallError('WORKSPACE_CHANGED','回看工作区已变化，请重新连接后重试');
         reply={ok:true,result};
       }
       catch(error){reply={ok:false,error:{code:error.code||'RECALL_SAVE_FAILED',message:error.message||'收藏未完成，请重试'}};}
@@ -74,5 +83,5 @@ export function connectRecallRenderer({api,session,workspaceId,isCurrent}) {
     })().catch(()=>{});
   });
   void api.recallReady({ready:true,workspaceId}).catch(()=>{});
-  return ()=>{disposed=true;stop?.();void api.recallReady({ready:false,workspaceId}).catch(()=>{});};
+  return ()=>{disposed=true;stopChanges?.();stop?.();void api.recallReady({ready:false,workspaceId}).catch(()=>{});};
 }

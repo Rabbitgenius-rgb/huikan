@@ -3,13 +3,26 @@ html[data-glass-material="solid"] .panel,
 html[data-glass-material="solid"] #excerpt {
   background: var(--float-bg-solid, #f7f7f8);
 }
+/* The default frosted preset is white-on-light. When macOS switches the menu material
+   to dark, follow it instead of leaving dark text on a darkened backdrop. */
+@media (prefers-color-scheme: dark) {
+  html[data-float-preset="glass"]:not([data-glass-material="solid"]):not([data-glass-high-contrast="true"]) {
+    --float-bg: rgba(30, 32, 40, .5) !important;
+    --float-bg-solid: #2a2d36 !important;
+    --float-text: #eceef4 !important;
+    --float-accent: #a9b8ff !important;
+  }
+  html[data-float-preset="glass"]:not([data-glass-material="solid"]) :is(.panel, #excerpt) {
+    border-color: rgba(255, 255, 255, .12);
+  }
+}
 /* Custom appearance must never override the user's accessibility contrast. */
 html[data-glass-high-contrast="true"] :is(.panel, #excerpt) {
   background: Canvas !important;
   color: CanvasText !important;
   border: 1px solid CanvasText;
 }
-html[data-glass-high-contrast="true"] :is(.title, #conv-title, .chapter-title, .review-count, .connection, header, footer) {
+html[data-glass-high-contrast="true"] :is(.title, #conv-title, .chapter-title, .review-count, .connection, header, footer, .topic-meta, .topic-count, .topic-brief, .inbox-note, .item-action, .icon-button, .topic-feedback) {
   color: CanvasText !important;
 }
 @media (forced-colors: active) {

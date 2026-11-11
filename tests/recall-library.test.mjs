@@ -181,3 +181,22 @@ test('renderer acknowledges only its addressed request after committed result an
   await acknowledged;assert.equal(results[0].ok,true);assert.equal(results[0].result.revision,1);assert.equal(session.state.cards.length,1);
   close();assert.equal(listener,null);assert.deepEqual(events.map(x=>x.ready),[true,false]);
 });
+
+test('committed revisions notify the companion once while reads and disposed windows do not',async()=>{
+ const {session,library}=setup(),notifications=[];await session.load();
+ const api={subscribe:()=>()=>{},recallReady:async()=>{},recallResult:async()=>{},recallLibraryChanged:async value=>{notifications.push(value);}};
+ const close=connectRecallRenderer({api,session,workspaceId:'isolated',isCurrent:()=>true});
+ await library.call('capture',request());await tick();
+ assert.deepEqual(notifications,[{workspaceId:'isolated',revision:1}]);
+ await session.load();await tick();assert.equal(notifications.length,1);
+ close();await session.commit({type:'draft.set',key:'unrelated',value:'after disposal'});await tick();
+ assert.equal(notifications.length,1);
+});
+
+test('a lost companion notification never fails an already committed capture',async()=>{
+ const {session,library}=setup();await session.load();
+ const api={subscribe:()=>()=>{},recallReady:async()=>{},recallResult:async()=>{},recallLibraryChanged:async()=>{throw Error('Synthetic lost IPC');}};
+ const close=connectRecallRenderer({api,session,workspaceId:'isolated',isCurrent:()=>true});
+ const saved=await library.call('capture',request());await tick();
+ assert.equal(session.state.cards[0].id,saved.item.id);close();
+});

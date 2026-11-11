@@ -16,7 +16,7 @@ const flush=async()=>{for(let i=0;i<5;i++)await new Promise(resolve=>setImmediat
 async function launch(settle,{timeoutMs=1000,platform='darwin',backgroundReady=true,notifyResult=true,prepareBackground}={}){
  const handlers=new Map(),events=new Map(),windowEvents=new Map(),sent=[],timers=[];
  let locked=false,quitCount=0,bridgeClosed=false,isQuitting,controller,connectionOptions,visible=true,minimized=false,restoreCount=0;
- const dialogs=[],dialogVisibility=[];
+ const dialogs=[],dialogVisibility=[],dialogOptions=[];
  const app={setName(){},getPath(){return '/synthetic-profile';},getAppPath(){return '/synthetic-app';},requestSingleInstanceLock(){return true;},whenReady(){return Promise.resolve();},on(name,fn){events.set(name,fn);},quit(){quitCount++;}};
  class BrowserWindow{
   constructor(){this.webContents={send(_channel,event){sent.push(event);void controller.handle(event);},setWindowOpenHandler(){},on(){},session:{setPermissionRequestHandler(){}}};}
@@ -28,7 +28,7 @@ async function launch(settle,{timeoutMs=1000,platform='darwin',backgroundReady=t
   acknowledge:async value=>{const result=await handlers.get('mengcang:rendererQuitReady')({},value);if(!result.data.accepted)throw Error('Late acknowledgement');},
  });
  const mocks={
-  electron:{app,BrowserWindow,ipcMain:{handle:(name,fn)=>handlers.set(name,fn)},protocol:{registerSchemesAsPrivileged(){},handle(){}},Menu:{buildFromTemplate:v=>v,setApplicationMenu(){}},dialog:{showMessageBox:()=>{dialogVisibility.push(visible);return new Promise(resolve=>dialogs.push((response=0)=>resolve({response})));},showErrorBox(){throw Error('Unexpected startup failure');}},shell:{}},
+  electron:{app,BrowserWindow,ipcMain:{handle:(name,fn)=>handlers.set(name,fn)},protocol:{registerSchemesAsPrivileged(){},handle(){}},Menu:{buildFromTemplate:v=>v,setApplicationMenu(){}},dialog:{showMessageBox:(_window,options)=>{dialogOptions.push(options);dialogVisibility.push(visible);return new Promise(resolve=>dialogs.push((response=0)=>resolve({response})));},showErrorBox(){throw Error('Unexpected startup failure');}},shell:{}},
   'node:fs/promises':{async mkdir(){},async readFile(){throw Object.assign(Error('No selection'),{code:'ENOENT'});}},'node:path':path,'node:os':{homedir:()=>'/synthetic-home'},
   './security.cjs':{trustedFrame:()=>true},
   './app-preferences.cjs':{createPreferences:()=>({async load(){},get:()=>({autoConnect:false}),async settle(){}})},
@@ -43,8 +43,39 @@ async function launch(settle,{timeoutMs=1000,platform='darwin',backgroundReady=t
  };
  vm.runInNewContext(main,{require:name=>{assert.ok(Object.hasOwn(mocks,name),name);return mocks[name];},process:{env:{},platform},__dirname:path.join(root,'desktop'),Response,clearInterval,setInterval:(...args)=>{const timer=setInterval(...args);timers.push(timer);return timer;}});
  await flush();
- return {sent,dialogs,dialogVisibility,requestQuit(){events.get('before-quit')({preventDefault(){}});},closeWorkbench(){let prevented=false;windowEvents.get('close')({preventDefault(){prevented=true;}});return prevented;},sessionEnd(){windowEvents.get('session-end')();},openFromTray(){connectionOptions.onOpenWorkbench();},quitFromTray(){void connectionOptions.onQuitRequested();},loseCompanion(){connectionOptions.onCompanionUnavailable();},secondInstance(){events.get('second-instance')();},minimize(){minimized=true;visible=false;},dispose(){controller.dispose();for(const timer of timers)clearInterval(timer);},get visible(){return visible;},get restores(){return restoreCount;},get locked(){return locked;},get quitCount(){return quitCount;},get bridgeClosed(){return bridgeClosed;},get quitting(){return isQuitting();}};
+ return {sent,dialogs,dialogVisibility,dialogOptions,shortcutIssue:options=>connectionOptions.onShortcutIssue(options),requestQuit(){events.get('before-quit')({preventDefault(){}});},closeWorkbench(){let prevented=false;windowEvents.get('close')({preventDefault(){prevented=true;}});return prevented;},sessionEnd(){windowEvents.get('session-end')();},openFromTray(){connectionOptions.onOpenWorkbench();},quitFromTray(){void connectionOptions.onQuitRequested();},loseCompanion(){connectionOptions.onCompanionUnavailable();},secondInstance(){events.get('second-instance')();},dockActivate(){events.get('activate')();},minimize(){minimized=true;visible=false;},dispose(){controller.dispose();for(const timer of timers)clearInterval(timer);},get visible(){return visible;},get restores(){return restoreCount;},get locked(){return locked;},get quitCount(){return quitCount;},get bridgeClosed(){return bridgeClosed;},get quitting(){return isQuitting();}};
 }
+
+test('Mac close keeps the library alive, and Dock/menu activation restores the same workbench',async t=>{
+ const app=await launch(async()=>{},{platform:'darwin'});t.after(app.dispose);
+ assert.equal(app.closeWorkbench(),true);await flush();
+ assert.equal(app.visible,false);assert.equal(app.bridgeClosed,false);assert.equal(app.quitCount,0);assert.equal(app.sent.length,0);
+ app.dockActivate();assert.equal(app.visible,true);
+ app.closeWorkbench();await flush();app.openFromTray();assert.equal(app.visible,true);
+ app.closeWorkbench();await flush();app.loseCompanion();assert.equal(app.visible,true);
+ app.closeWorkbench();await flush();app.quitFromTray();await flush();
+ assert.equal(app.quitCount,1);assert.equal(app.bridgeClosed,true);
+});
+
+test('Mac does not hide without a working menu, and a delayed close cannot override Dock activation',async t=>{
+ const unavailable=await launch(async()=>{},{platform:'darwin',backgroundReady:false});t.after(unavailable.dispose);
+ unavailable.closeWorkbench();await flush();assert.equal(unavailable.visible,true);assert.equal(unavailable.dialogs.length,1);unavailable.dialogs.shift()();await flush();
+ let complete;const ready=new Promise(resolve=>{complete=resolve;});
+ const slow=await launch(async()=>{},{platform:'darwin',prepareBackground:()=>ready});t.after(slow.dispose);
+ slow.closeWorkbench();await flush();slow.dockActivate();complete(true);await flush();assert.equal(slow.visible,true);
+});
+
+test('a Mac shortcut warning restores its workbench and returns the chosen alternative or dismissal',async t=>{
+ const app=await launch(async()=>{});t.after(app.dispose);
+ app.closeWorkbench();await flush();assert.equal(app.visible,false);
+ const choices=[{accelerator:'Command+Shift+K',label:'⌘⇧K'},{accelerator:'Command+Alt+K',label:'⌘⌥K'},{accelerator:'Command+Shift+Space',label:'⌘⇧Space'}];
+ const warning={label:'⌘⇧K',registered:false,error:'已被占用',choices};
+ const selecting=app.shortcutIssue(warning);assert.equal(app.visible,true);
+ assert.equal(app.dialogVisibility.at(-1),true);assert.match(app.dialogOptions.at(-1).message,/无法启用/);
+ assert.equal(app.dialogOptions.at(-1).buttons.length,4);
+ app.dialogs.shift()(1);assert.equal(await selecting,'Command+Alt+K');
+ const dismissing=app.shortcutIssue(warning);app.dialogs.shift()(3);assert.equal(await dismissing,null);
+});
 
 test('failed persistence unlocks on return and permits a successful second quit',async t=>{
  let fail=true;

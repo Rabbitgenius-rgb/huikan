@@ -1,1 +1,65 @@
-*{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;background:transparent}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif;font-size:13px;color:var(--float-text,#26282c);user-select:none}.panel{height:100%;display:flex;flex-direction:column;padding:17px 18px 12px;background:var(--float-bg,rgba(246,247,249,.76));border:1px solid rgba(255,255,255,.45);border-radius:var(--float-radius,18px);box-shadow:var(--float-shadow,none)}.header{flex:none;padding:1px 0 15px}.heading-line{display:flex;align-items:center;justify-content:space-between;gap:8px}.title,.review-count{font-size:11px;color:#70757e;font-weight:400}.review-count{white-space:nowrap}#conv-title{font-size:18px;line-height:1.4;font-weight:600;margin:11px 0 0;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}.flow{flex:1;min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:#b5bac255 transparent}.topic-row{width:100%;min-height:55px;border:0;border-bottom:1px solid #9298a51a;background:transparent;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:10px 0;color:inherit;cursor:pointer;font:inherit;text-align:right;border-radius:7px}.topic-row:hover,.topic-row:focus-visible{background:#7c8da015;outline:none}.topic-row:focus-visible{box-shadow:inset 0 0 0 2px var(--float-accent,#6c88a9)}.topic-symbol{flex:none;display:grid;place-items:center;width:32px;height:32px;background:#8a949d12;border:1px solid #8a949d16;border-radius:9px;color:#677582;font-size:18px}.topic-title{font-size:13px;line-height:1.55;max-width:216px;overflow-wrap:anywhere}.connection{flex:none;padding-top:12px;color:#818690;font-size:10px;line-height:1.5;display:flex;gap:8px;align-items:end;justify-content:space-between}.connection>span{max-width:165px;overflow-wrap:anywhere}.footer-actions{display:flex;gap:7px;flex:none}button{font:inherit}.footer-actions button,.inline-button{padding:0;background:none;border:0;color:inherit;font-size:10px;cursor:pointer;white-space:nowrap}.footer-actions button:hover,.inline-button:hover{color:var(--float-accent,#4d6f95)}button:disabled{opacity:.45;cursor:default}.empty-state{white-space:pre-line;line-height:1.8;color:#818690;font-size:12px;padding:18px 2px}.pending-item{padding:12px 2px;border-bottom:1px solid #9298a51a}.pending-label,.pending-error{font-size:11px;color:#818690;line-height:1.6}.pending-title{font-size:13px;padding:6px 0}.pending-error{color:#a7735b}.inline-button{font-size:11px}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+/* Secondary tones are mixed from the chosen text colour so every preset keeps readable contrast. */
+:root {
+  --fg: var(--float-text, #26282c);
+  --bg-solid: var(--float-bg-solid, #f6f7f9);
+  --muted: color-mix(in srgb, var(--fg) 80%, var(--bg-solid));
+  --line: color-mix(in srgb, var(--fg) 11%, transparent);
+  --hover: color-mix(in srgb, var(--fg) 8%, transparent);
+  --chip: color-mix(in srgb, var(--fg) 7%, transparent);
+  --accent: var(--float-accent, #4d66cf);
+}
+* { box-sizing: border-box }
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent }
+body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif; font-size: 13px; color: var(--fg); user-select: none; -webkit-font-smoothing: antialiased }
+button { font: inherit; color: inherit }
+button:disabled { opacity: .5; cursor: default }
+svg { display: block; flex: none }
+
+.panel { height: 100%; display: flex; flex-direction: column; padding: 14px 10px 8px; background: var(--float-bg, rgba(246,247,249,.76)); border: 1px solid color-mix(in srgb, #fff 45%, transparent); border-radius: var(--float-radius, 16px); box-shadow: var(--float-shadow, none) }
+
+.header { flex: none; padding: 0 8px 12px }
+.heading-line { display: flex; align-items: center; justify-content: space-between; gap: 8px }
+.title, .review-count { font-size: 12px; color: var(--muted); font-weight: 500 }
+.review-count { white-space: nowrap; font-variant-numeric: tabular-nums }
+#conv-title { font-size: 17px; line-height: 1.4; font-weight: 600; margin: 6px 0 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere }
+
+.flow { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; padding-bottom: 4px }
+
+.topic-row { width: 100%; min-height: 48px; border: 0; background: transparent; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 7px 8px; cursor: default; text-align: left; border-radius: 8px }
+.topic-row + .topic-row { margin-top: 2px }
+.topic-row:hover, .topic-row:focus-visible { background: var(--hover); outline: none }
+.topic-row:focus-visible { box-shadow: inset 0 0 0 2px var(--accent) }
+.topic-symbol { display: grid; place-items: center; width: 30px; height: 30px; background: var(--chip); border-radius: 8px; color: var(--accent) }
+.topic-text { display: flex; flex-direction: column; min-width: 0; gap: 1px }
+.topic-title { font-size: 13px; line-height: 1.45; font-weight: 500; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere }
+.topic-meta { font-size: 12px; line-height: 1.45; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.topic-count { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 16px; text-align: right }
+
+.inbox.has-topics { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line) }
+.topic-row.is-inbox .topic-symbol { color: var(--muted); background: transparent; border: 1px dashed color-mix(in srgb, var(--fg) 28%, transparent) }
+.inbox-action { display: flex; align-items: center; gap: 8px; padding: 6px 8px 2px 48px }
+.organize-button { flex: none; height: 24px; padding: 0 10px; border: 0; border-radius: 6px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-size: 12px; font-weight: 500; cursor: default }
+.organize-button:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 22%, transparent) }
+.organize-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px }
+.inbox-note { font-size: 11px; line-height: 1.4; color: var(--muted) }
+
+.pending-item { margin: 6px 8px 0; padding: 10px 0; border-top: 1px solid var(--line) }
+.pending-label, .pending-error { font-size: 12px; color: var(--muted); line-height: 1.5 }
+.pending-title { font-size: 13px; padding: 4px 0 6px }
+.pending-error { color: #b4532a }
+.inline-button { padding: 0; background: none; border: 0; color: var(--accent); font-size: 12px; cursor: default }
+.inline-button:hover:not(:disabled) { text-decoration: underline }
+
+.empty-state { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 18px 8px; color: var(--muted) }
+.empty-state p { margin: 0; white-space: pre-line; line-height: 1.7; font-size: 13px }
+
+.connection { flex: none; padding: 8px 8px 0; margin-top: 2px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.4; display: flex; gap: 8px; align-items: center; justify-content: space-between }
+#connection-status { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+#connection-status::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: #34a853 }
+#connection-status[data-tone="waiting"]::before { background: #d99a1e }
+#connection-status[data-tone="error"]::before { background: #d64a3b }
+.footer-actions { display: flex; gap: 2px; flex: none }
+.icon-button { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: default }
+.icon-button:hover:not(:disabled) { background: var(--hover); color: var(--fg) }
+.icon-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%) }

@@ -20,7 +20,7 @@ function createGlassWindow({ userData, reveal, openRecall }) {
     if (orbX !== nextX) { orbX = nextX; if (ready) win.webContents.send('glass:placement', orbX); }
     return { x: Math.round(anchorX - orbX), y: Math.round(Math.max(a.y, Math.min(y, a.y + a.height - h))), width, height: h };
   }
-  const win = new BrowserWindow({ ...fit(initial.anchorX, initial.y, height), title: '梦藏 · 玻璃珠收藏', show: false, frame: false, transparent: true,
+  const win = new BrowserWindow({ ...fit(initial.anchorX, initial.y, height), title: '回看 · 玻璃珠收藏', show: false, frame: false, transparent: true,
     backgroundColor: '#00000000', hasShadow: false, resizable: false, movable: true, fullscreenable: false, skipTaskbar: true, alwaysOnTop: true,
     webPreferences: { preload: path.join(__dirname, 'glass/preload.cjs'), contextIsolation: true, sandbox: true, backgroundThrottling: true, spellcheck: false } });
   if (process.platform !== 'win32') win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });

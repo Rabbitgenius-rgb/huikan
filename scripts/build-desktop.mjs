@@ -1,5 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
+import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {build} from 'esbuild';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -8,6 +10,7 @@ const pluginVersion=JSON.parse(await fs.readFile(path.join(root,'harness-plugin/
 const dest=path.join(root,'desktop/build');
 await fs.rm(dest,{recursive:true,force:true});
 await fs.mkdir(dest,{recursive:true});
+if(process.platform==='darwin')execFileSync('/usr/bin/swiftc',['-O','-module-cache-path',path.join(os.tmpdir(),'huikan-swift-module-cache'),path.join(root,'scripts/mac-shortcut-probe.swift'),'-o',path.join(dest,'mac-shortcut-probe')],{stdio:'inherit'});
 for(const file of ['LICENSE','THIRD_PARTY_NOTICES.md'])await fs.copyFile(path.join(root,file),path.join(dest,file));
 await build({entryPoints:[path.join(root,'desktop/main.cjs')],outfile:path.join(dest,'workbench.cjs'),bundle:true,platform:'node',format:'cjs',external:['electron','original-fs'],target:'node22'});
 await fs.writeFile(path.join(dest,'main.cjs'),"'use strict';\nif(process.argv.includes('--huikan-companion'))require('./companion/src/main.js');else require('./workbench.cjs');\n");
