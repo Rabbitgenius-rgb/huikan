@@ -10,6 +10,7 @@ window.applyFloatAppearance = settings => {
  root.style.setProperty('--float-radius',`${s.radius}px`);
  root.style.setProperty('--float-shadow',s.shadow?'0 6px 16px rgba(0,0,0,.14)':'none');
  root.dataset.floatAppearance='true';
+ if(typeof s.preset==='string'&&/^[a-z]{1,16}$/.test(s.preset))root.dataset.floatPreset=s.preset;
 };
 window.api.onSettings(window.applyFloatAppearance);
 window.api.onGlassMaterial(surface => {

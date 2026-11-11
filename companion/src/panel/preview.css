@@ -1,1 +1,50 @@
-*{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;background:transparent}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif;font-size:13px;color:var(--float-text,#26282c)}#excerpt{height:100%;display:flex;flex-direction:column;padding:15px 18px 12px;background:var(--float-bg,rgba(246,247,249,.76));border:1px solid rgba(255,255,255,.45);border-radius:var(--float-radius,18px);box-shadow:var(--float-shadow,none);overflow:hidden}.topic-toolbar{display:flex;justify-content:space-between;gap:15px;flex:none;margin-bottom:12px}.topic-toolbar button{font:inherit;color:#747d88;font-size:11px;border:0;background:transparent;padding:2px 0;cursor:pointer}.topic-toolbar button:hover{color:var(--float-accent,#4d6f95)}button:focus-visible,.topic-excerpt:focus-visible{outline:2px solid var(--float-accent,#6c88a9);outline-offset:2px;border-radius:4px}.topic-heading{display:flex;align-items:center;gap:10px;flex:none}.topic-symbol{display:grid;place-items:center;flex:none;width:32px;height:32px;border-radius:9px;background:#8a949d12;border:1px solid #8a949d16;color:#677582;font-size:18px}h1{font-size:16px;font-weight:600;line-height:1.5;margin:0;overflow-wrap:anywhere}.topic-brief{font-size:12px;line-height:1.65;margin:11px 0 13px;color:#777e89;overflow-wrap:anywhere;flex:none;max-height:80px;overflow:auto}.topic-items{flex:1;min-height:0;overflow:auto;border-top:1px solid #9298a526;scrollbar-width:thin;scrollbar-color:#b5bac255 transparent;padding-top:4px}.topic-excerpt{padding:12px 2px 13px;border-bottom:1px solid #9298a51a;line-height:1.7;overflow-wrap:anywhere;cursor:grab;user-select:none}.topic-excerpt:hover{background:#7c8da00c}.topic-excerpt.dragging{opacity:.45;cursor:grabbing}.recall-paragraph{white-space:pre-wrap}.recall-code{white-space:pre-wrap;font:11px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;padding:8px;background:#7c8da014;border-radius:7px;margin:7px 0}.topic-excerpt a{color:var(--float-accent,#4d6f95);text-decoration:underline;cursor:pointer}.topic-item-state{font-size:10px;color:#8a9098;margin-top:8px}.topic-feedback{flex:none;color:#858b95;font-size:10px;line-height:1.5;padding-top:9px;min-height:24px}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+/* Secondary tones are mixed from the chosen text colour so every preset keeps readable contrast. */
+:root {
+  --fg: var(--float-text, #26282c);
+  --bg-solid: var(--float-bg-solid, #f6f7f9);
+  --muted: color-mix(in srgb, var(--fg) 80%, var(--bg-solid));
+  --line: color-mix(in srgb, var(--fg) 11%, transparent);
+  --hover: color-mix(in srgb, var(--fg) 6%, transparent);
+  --chip: color-mix(in srgb, var(--fg) 7%, transparent);
+  --accent: var(--float-accent, #4d66cf);
+}
+* { box-sizing: border-box }
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent }
+body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif; font-size: 13px; color: var(--fg); -webkit-font-smoothing: antialiased }
+button { font: inherit; color: inherit }
+svg { display: block; flex: none }
+
+#excerpt { height: 100%; display: flex; flex-direction: column; padding: 14px 10px 8px; background: var(--float-bg, rgba(246,247,249,.76)); border: 1px solid color-mix(in srgb, #fff 45%, transparent); border-radius: var(--float-radius, 16px); box-shadow: var(--float-shadow, none); overflow: hidden }
+
+.topic-heading { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: start; gap: 10px; flex: none; padding: 0 4px 0 8px; user-select: none }
+.topic-symbol { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--chip); color: var(--accent) }
+.topic-symbol.is-inbox { color: var(--muted); background: transparent; border: 1px dashed color-mix(in srgb, var(--fg) 28%, transparent) }
+.topic-titles { display: flex; flex-direction: column; gap: 1px; min-width: 0; padding-top: 1px }
+h1 { font-size: 15px; font-weight: 600; line-height: 1.4; margin: 0; overflow-wrap: anywhere }
+.topic-count { font-size: 12px; color: var(--muted) }
+.icon-button { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: default }
+.icon-button:hover { background: var(--hover); color: var(--fg) }
+.topic-brief { font-size: 12px; line-height: 1.6; margin: 8px 8px 0; color: var(--muted); overflow-wrap: anywhere; flex: none; max-height: 58px; overflow: auto; user-select: none }
+
+.topic-items { flex: 1; min-height: 0; overflow: auto; margin-top: 10px; border-top: 1px solid var(--line); scrollbar-width: thin; scrollbar-color: var(--line) transparent }
+.topic-excerpt { padding: 10px 8px 8px; border-bottom: 1px solid var(--line); line-height: 1.7; overflow-wrap: anywhere; border-radius: 0 }
+.topic-excerpt:last-child { border-bottom: 0 }
+.topic-excerpt.dragging { opacity: .45 }
+.topic-body { user-select: text; cursor: text }
+.topic-body ::selection { background: color-mix(in srgb, var(--accent) 28%, transparent) }
+.recall-paragraph { white-space: pre-wrap }
+.recall-code { white-space: pre-wrap; font: 11.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 8px 10px; background: var(--chip); border-radius: 7px; margin: 6px 0 }
+.topic-excerpt a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer }
+
+.item-actions { display: flex; gap: 2px; margin: 6px 0 0 -6px; user-select: none }
+.item-action { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 7px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 12px; cursor: default; transition: background-color .12s, color .12s }
+.item-action:hover { background: var(--hover); color: var(--fg) }
+.pin-button { cursor: grab }
+.is-pinned .pin-button { cursor: default; color: var(--accent) }
+.topic-excerpt.dragging .pin-button { cursor: grabbing }
+
+button:focus-visible, .topic-excerpt:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 6px }
+.topic-feedback { flex: none; color: var(--muted); font-size: 12px; line-height: 1.4; padding: 8px 8px 0; min-height: 26px; border-top: 1px solid var(--line); user-select: none }
+.topic-feedback:empty { border-top-color: transparent }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%) }
+@media (prefers-reduced-motion: reduce) { .item-action { transition: none } }

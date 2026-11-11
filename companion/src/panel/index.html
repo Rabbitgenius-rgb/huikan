@@ -2,15 +2,15 @@
 <html lang="zh-CN">
 <head>
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none';">
-<meta charset="UTF-8"><title>回看 · 对话脉络</title>
+<meta charset="UTF-8"><title>回看 · 对话主题</title>
 <link rel="stylesheet" href="style.css"><link rel="stylesheet" href="../glass-surface.css">
 </head>
 <body class="story">
 <div class="panel">
-<header class="header"><div class="heading-line"><span class="title">对话脉络</span><span class="review-count" id="mark-count"></span></div><h1 id="conv-title"></h1></header>
+<header class="header"><div class="heading-line"><span class="title">回看</span><span class="review-count" id="mark-count"></span></div><h1 id="conv-title"></h1></header>
 <main id="flow" class="flow" aria-label="当前对话的回看主题"></main>
-<footer class="connection"><span id="connection-status" role="status"></span><div class="footer-actions"><button id="organize" type="button">整理主题</button><button id="refresh" type="button" aria-label="刷新回看内容">刷新</button></div></footer>
+<footer class="connection"><span id="connection-status" role="status"></span><div class="footer-actions"><button id="refresh" class="icon-button" type="button" aria-label="刷新回看内容" title="刷新"></button></div></footer>
 </div>
-<script src="../appearance-renderer.js"></script><script src="script.js"></script>
+<script src="../appearance-renderer.js"></script><script src="../shared/topic-icons.js"></script><script src="script.js"></script>
 </body>
 </html>
