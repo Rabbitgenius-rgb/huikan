@@ -1,4 +1,7 @@
-export const SUPPORTED_VERSIONS = Object.freeze(['0.2.0-rc.2', '0.2.1-rc.3']);
+import harnessCompatibility from '../../shared/harness-compatibility.cjs';
+export const SUPPORTED_VERSIONS = harnessCompatibility.VERIFIED_HARNESS_VERSIONS;
+export const isHarnessVersion = harnessCompatibility.isHarnessVersion;
+export const isVerifiedHarnessVersion = harnessCompatibility.isVerifiedHarnessVersion;
 export const MAX_TEXT = 200000;
 
 export function recallError(code, message) {
@@ -123,13 +126,35 @@ export function captureFor(row, context, events, selection, requestId) {
 }
 
 export function assertCompatible(version, ctx) {
-  if (!SUPPORTED_VERSIONS.includes(version)
+  if (!isHarnessVersion(version)
+    || typeof ctx.connection?.rpc?.call !== 'function'
+    || typeof ctx.slots?.inject !== 'function'
+    || typeof ctx.slots?.register !== 'function'
+    || typeof ctx.effect !== 'function'
+    || typeof ctx.sessions?.list?.getSnapshot !== 'function'
     || typeof ctx.sessions?.list?.subscribe !== 'function'
     || typeof ctx.sessions?.binding !== 'function'
     || typeof ctx.uiWorkspace?.openSession !== 'function'
     || typeof ctx.uiConversation?.binding !== 'function') {
-    throw recallError('version-unsupported', '当前 Harness 版本或会话接口尚未通过回看插件适配。');
+    throw recallError('interface-incompatible', 'Harness 的会话接口已变化，请更新回看插件。');
   }
+}
+
+export function inspectSessionInterfaces(ctx, row) {
+  if (!row) return null;
+  const binding = ctx.sessions.binding(row.id);
+  if (!binding) throw recallError('source-unavailable', '对话尚未载入，回看会继续自动检查。');
+  if (typeof binding.session?.getSnapshot !== 'function' || typeof binding.session?.loadThrough !== 'function'
+    || typeof binding.eventSource?.getSnapshot !== 'function') throw recallError('interface-incompatible', 'Harness 的消息来源接口已变化，请更新回看插件。');
+  const conversation = ctx.uiConversation.binding(binding);
+  if (typeof conversation?.target !== 'function') throw recallError('interface-incompatible', 'Harness 的对话定位接口已变化，请更新回看插件。');
+  const target = conversation.target('chat');
+  if (typeof target?.getSnapshot !== 'function') throw recallError('interface-incompatible', 'Harness 的对话定位接口已变化，请更新回看插件。');
+  const snapshot = target.getSnapshot();
+  if (!snapshot || !binding.eventSource.getSnapshot()) throw recallError('source-unavailable', '消息尚未载入，回看会继续自动检查。');
+  if (!Array.isArray(snapshot.order) || typeof snapshot.nodes?.get !== 'function'
+    || !Array.isArray(binding.eventSource.getSnapshot().entries)) throw recallError('interface-incompatible', 'Harness 的消息结构接口已变化，请更新回看插件。');
+  return { binding, snapshot };
 }
 
 // One manual gesture can dispatch several DOM click events. Keep its exact payload and UUID.

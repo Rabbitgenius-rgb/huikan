@@ -5,7 +5,7 @@ import { resolve, join } from 'node:path';
 import { z } from 'zod';
 import * as typertProtocol from '@deepseek-ai/dsh-typert-protocol';
 import { methods } from './schemas.js';
-import { SUPPORTED_VERSIONS } from './core.js';
+import { isHarnessVersion } from './core.js';
 import { generateTopics } from './topic-model.js';
 import rpc from './private-rpc.cjs';
 import discovery from './connection-discovery.cjs';
@@ -27,14 +27,14 @@ export function identity(config={}) {
  const version=require('@deepseek-ai/dsh-typert-protocol/package.json').version;
  const instanceId=config.instanceId || process.env.MENGCANG_RECALL_INSTANCE_ID || 'dsh-'+createHash('sha256').update(resolve(process.env.DSH_HOME || join(homedir(),'.dsh'))).digest('hex').slice(0,32);
  methods.info.output.shape.instanceId.parse(instanceId);
- return {instanceId,version,supported:SUPPORTED_VERSIONS.includes(version)};
+ return {instanceId,version,supported:isHarnessVersion(version)&&typeof TypertRemoteService==='function'&&typeof RemoteError==='function'};
 }
 export class RecallBridge extends TypertRemoteService {
  constructor(ctx, config={}) { super(ctx,'recallBridge',{namespace:'recall'});this.identity=identity(config);this.config=config; }
  info(request) {methods.info.input.parse(request);return this.identity;}
  async forward(method,request) {
   methods[method].input.parse(request);
-  if(!this.identity.supported)throw new RemoteError('RECALL_UNSUPPORTED','当前 Harness 版本尚未适配。');
+  if(!this.identity.supported)throw new RemoteError('RECALL_UNSUPPORTED','Harness 的本机通信接口不可用，请更新回看插件。');
   const source=method==='capture'?request.externalSource:request;
   if(source.instanceId && source.instanceId!==this.identity.instanceId)throw new RemoteError('RECALL_INSTANCE','来源实例不匹配。');
   let result;

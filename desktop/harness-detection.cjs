@@ -6,9 +6,9 @@ const path = require('node:path');
 const os = require('node:os');
 const { execFile } = require('node:child_process');
 
-const SUPPORTED = new Set(['0.2.0-rc.2', '0.2.1-rc.3']);
+const { VERIFIED_HARNESS_VERSIONS, isHarnessVersion, isVerifiedHarnessVersion } = require('../shared/harness-compatibility.cjs');
+const SUPPORTED = new Set(VERIFIED_HARNESS_VERSIONS);
 const CLI_ENTRY = 'dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js';
-const VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.]+)?$/;
 const run = (executable, args) => new Promise((resolve, reject) => {
   execFile(executable, args, { timeout: 4000, maxBuffer: 64 * 1024, windowsHide: true },
     (error, stdout) => error ? reject(error) : resolve(stdout.trim()));
@@ -142,10 +142,10 @@ async function inspectHarness(appPath, {
         if (!await regularFile(file, fsApi)) return null;
       }
       const { manifest, cliPresent } = await readAsar(archive);
-      if (manifest?.name !== '@deepseek-ai/dsh-desktop' || manifest?.dshDesktopAppId !== 'com.deepseek.dsh' || !VERSION.test(manifest.version) || !cliPresent) return null;
+      if (manifest?.name !== '@deepseek-ai/dsh-desktop' || manifest?.dshDesktopAppId !== 'com.deepseek.dsh' || !isHarnessVersion(manifest.version) || !cliPresent) return null;
       const running = await inspectRunning(executable, { platform, env });
       return {
-        installed: true, path: root, version: manifest.version, supported: SUPPORTED.has(manifest.version),
+        installed: true, path: root, version: manifest.version, supported: true, verified: isVerifiedHarnessVersion(manifest.version),
         cli: { command: executable, args: ['--expose-internals', paths.join(archive, ...CLI_ENTRY.split('/'))], env: { ELECTRON_RUN_AS_NODE: '1' } },
         running: running !== false, runningKnown: typeof running === 'boolean',
       };
@@ -156,11 +156,11 @@ async function inspectHarness(appPath, {
     const plist = paths.join(appPath, 'Contents/Info.plist');
     if (await readPlist(plist, 'CFBundleIdentifier') !== 'com.deepseek.dsh') return null;
     const version = await readPlist(plist, 'CFBundleShortVersionString');
-    if (!VERSION.test(version)) return null;
+    if (!isHarnessVersion(version)) return null;
     const command = paths.join(appPath, 'Contents/Resources/runtime/cli/bin/dsh');
     if (!await regularFile(command, fsApi)) return null;
     const running = await inspectRunning(paths.join(appPath, 'Contents/MacOS/DeepSeek Harness'), { platform, env });
-    return { installed: true, path: appPath, version, supported: SUPPORTED.has(version),
+    return { installed: true, path: appPath, version, supported: true, verified: isVerifiedHarnessVersion(version),
       cli: { command, args: [], env: {} }, running: running !== false, runningKnown: typeof running === 'boolean' };
   } catch { return null; }
 }

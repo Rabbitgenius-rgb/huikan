@@ -73,9 +73,11 @@ function createConnectionManager({directory,companionDirectory,companionPath,com
   let state='waiting',message='打开 Harness 并启用回看插件，即可自动连接。';
   if(!enabled){state='disabled';message='自动连接已关闭。';}
   else if(installationActive){state='installing';message='正在通过 Harness 插件管理器安装，请稍候。';}
-  else if(connected){state='connected';message='已连接，可以在 Harness 对话中留作回看。';}
+  else if(connected){state='connected';message=companion?.compatibility?.verified===false?'已通过接口与消息结构检查，可以在 Harness 对话中留作回看。':'已连接，可以在 Harness 对话中留作回看。';}
   else if(lastError){state='error';message=lastError;}
   else if(installError){state='install-error';message=installError;}
+  else if(companion?.compatibility?.state==='incompatible'){state='incompatible';message=companion.compatibility.message||'Harness 的接口或消息结构发生变化，请更新回看插件。';}
+  else if(companion?.compatibility?.state==='checking'){state='checking';message=companion.compatibility.message||'正在检查 Harness 的会话接口与消息结构，请打开一段包含消息的对话。';}
   else if(companion?.protocol===0){state='update-required';message='浮窗版本较旧，请退出旧浮窗后重新尝试。';}
   else if(harness.installed&&!harness.supported){state='unsupported';message='已识别此版本，当前回看插件尚未适配。';}
   else if(harness.reason==='platform'){state='manual-setup';message='此平台暂不支持自动安装 Harness 插件。请在 Harness 的插件页安装配套插件包，再返回回看连接。';}
@@ -85,6 +87,7 @@ function createConnectionManager({directory,companionDirectory,companionPath,com
    state=pluginSetup==='disabled'?'plugin-disabled':pluginSetup==='development'?'plugin-managed':['current','newer','installed'].includes(pluginSetup)?'waiting':pluginSetup;
   }
   else if(!companion||!ready){state='starting';message='正在准备本机连接…';}
+  else if(harness.verified===false){state='checking';message='请打开 Harness 对话；回看会自动检查接口与消息结构，通过后连接。';}
   return {state,message,harness,plugin:{connected:companion?.connected===true,protocol:companion?.protocol||0,setup:installError?'error':pluginSetup,installedVersion:setup?.installedVersion},libraryReady:ready,automatic:enabled};
  }
  async function install(pluginPackage=bundledPlugin?.packagePath,{automatic=false}={}){

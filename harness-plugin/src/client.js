@@ -5,6 +5,7 @@ function createClient(React){
   let stopped=false,info=null,supported=false,commandBusy=false,menu=null,toast=null,toastTimer=null,lastError='',pending=null;
   let menuPayload=null,editingTopic=false,selecting=false,selectionFrame=0,dismissedSelection=null;
   const navigationAcks=[];
+  let compatibility={protocol:1,state:'checking',message:'正在检查 Harness 的会话接口与消息结构…'};
   const viewId=crypto.randomUUID();
   const focusTracker=createFocusTracker();
   async function remote(method,request){const reply=await ctx.connection.rpc.call('/api','recall/'+method,{args:{request}});if(!reply?.ok)throw recallError(reply?.error?.code||'remote-error',reply?.error?.message||'本地回看连接失败。');return reply.value;}
@@ -15,12 +16,33 @@ function createClient(React){
   function bindingOf(id){const binding=ctx.sessions.binding(id);if(!binding)throw recallError('source-unavailable','会话尚未载入。');return binding;}
   function eventsOf(binding){return eventRecords(binding.eventSource.getSnapshot());}
   function nodeForElement(binding,element){const snapshot=ctx.uiConversation.binding(binding).target('chat').getSnapshot();const node=snapshot?.nodes.get(element.dataset.chatNodeKey);if(!node)throw recallError('source-unavailable','消息来源尚未载入。');return node;}
+  function nodeForRow(binding,row){const snapshot=ctx.uiConversation.binding(binding).target('chat').getSnapshot();return snapshot?.order.map(key=>snapshot.nodes.get(key)).find(node=>node&&(row.role==='assistant'?node.kind==='assistant-step'&&node.data.finalNode?.seq===row.event.seq&&node.data.finalNode?.messageId===row.message.id:(node.kind==='user'||node.kind==='steering')&&(node.data.seq??node.anchorSeq)===row.event.seq));}
+  function elementForNode(node){return node?document.querySelector('[data-chat-node-key="'+CSS.escape(node.key)+'"]:not([data-chat-group-part="reasoning"])'):null;}
   function rowForElement(binding,element){const node=nodeForElement(binding,element);if(node.kind==='assistant-step'){if(!node.data.finalNode)throw recallError('source-unsettled','请等这条消息完成后再留存。');return identifyMessage(eventsOf(binding),{messageId:node.data.finalNode.messageId,eventSeq:node.data.finalNode.seq});}if(node.kind==='user'||node.kind==='steering')return identifyMessage(eventsOf(binding),{eventSeq:node.data.seq??node.anchorSeq});throw recallError('source-unsupported','此区域不是可留存的消息正文。');}
+  function assessCompatibility(row){
+   try{
+    assertCompatible(info.version,ctx);configureDomVersion(info.version);
+    if(!info.supported)throw recallError('interface-incompatible','Harness 的本机通信接口不可用，请更新回看插件。');
+    const session=inspectSessionInterfaces(ctx,row);let checked=0;
+    if(session)for(const element of document.querySelectorAll('[data-chat-node-key][data-chat-flow-kind]')){
+     if(checked>=12)break;
+     if(!['assistant-step','user','steering'].includes(element.dataset.chatFlowKind)||element.dataset.chatGroupPart==='reasoning')continue;
+     const node=session.snapshot.nodes.get(element.dataset.chatNodeKey);if(!node)continue;
+     if(node.kind==='assistant-step'&&!node.data?.finalNode)continue;
+     let source;try{source=rowForElement(session.binding,element);}catch(e){if(['source-unavailable','source-unsettled'].includes(e.code))continue;throw e;}
+     if(!markdownOf(source.message).trim())continue;
+     if(source.role==='user'&&!Number.isSafeInteger(node.location?.turn?.turn))throw recallError('interface-incompatible','Harness 的用户消息轮次接口已变化，请更新回看插件。');
+     messageBody(element);checked++;
+    }
+    return {protocol:1,state:checked||isVerifiedHarnessVersion(info.version)?'ready':'checking',...(!checked&&!isVerifiedHarnessVersion(info.version)?{message:'请打开一段包含消息的对话，回看会自动检查兼容性。'}:{})};
+   }catch(e){return {protocol:1,state:['source-unavailable','source-unsettled'].includes(e.code)?'checking':'incompatible',message:String(e.message||'Harness 接口检查未通过，请更新回看插件。').slice(0,300)};}
+  }
+  function ensureReady(){compatibility=assessCompatibility(selected());supported=compatibility.state==='ready';if(!supported)throw recallError('interface-incompatible',compatibility.message||'兼容检查尚未完成，请打开对话后重试。');}
   const dispatchCapture=createCaptureDispatcher(payload=>remote('capture',payload));
   async function commit(payload,retry=false){pending=payload;try{const reply=await dispatchCapture(payload,{retry});payload=reply.payload;const result=reply.result;if(result.status==='saved'){pending=null;const first=result.item?.externalSource,source=payload.externalSource;notify(first&&(first.provider!==source.provider||first.instanceId!==source.instanceId||first.sessionId!==source.sessionId)?'相同原文已保存在回看中，保留首次来源':'已添加回看');}else notify('已暂存，等待梦藏写入',()=>commit(payload,true));}catch(e){payload=e.capturePayload||payload;notify(e.message,()=>commit(payload,true));}}
-  async function saveMessage(messageId){try{if(!supported)throw recallError('version-unsupported','当前 Harness 尚未适配。');const c=context(),b=bindingOf(c.sessionId);const row=identifyMessage(eventsOf(b),{messageId});await commit(captureFor(row,c,eventsOf(b),null,crypto.randomUUID()));}catch(e){notify(e.message);}}
+  async function saveMessage(messageId){try{if(!info)throw recallError('interface-incompatible','正在检查 Harness 连接，请稍后重试。');ensureReady();const c=context(),b=bindingOf(c.sessionId);const row=identifyMessage(eventsOf(b),{messageId}),element=elementForNode(nodeForRow(b,row));if(!element)throw recallError('source-unavailable','消息正文尚未显示，请展开消息后重试。');messageBody(element);await commit(captureFor(row,c,eventsOf(b),null,crypto.randomUUID()));}catch(e){notify(e.message);}}
   function captureElement(element,selection){
-   if(!supported)throw recallError('version-unsupported','当前 Harness 尚未适配。');
+   ensureReady();
    const c=context(),b=bindingOf(c.sessionId),row=rowForElement(b,element);
    c.turn=nodeForElement(b,element).location?.turn?.turn;
    return captureFor(row,c,eventsOf(b),selection,crypto.randomUUID());
@@ -98,22 +120,31 @@ function createClient(React){
    if(source.instanceId!==info.instanceId)throw recallError('wrong-instance','来源属于另一个 Harness 实例。');
    await ctx.uiWorkspace.openSession(source.sessionId);const b=await waitFor(()=>ctx.sessions.binding(source.sessionId));await waitFor(()=>b.session.getSnapshot().openState==='open',15000);await b.session.loadThrough(source.eventSeq);
    const row=identifyMessage(eventsOf(b),{messageId:source.messageId,eventSeq:source.eventSeq});
-   const node=await waitFor(()=>{const s=ctx.uiConversation.binding(b).target('chat').getSnapshot();return s?.order.map(k=>s.nodes.get(k)).find(n=>n&&(row.role==='assistant'?n.kind==='assistant-step'&&n.data.finalNode?.seq===source.eventSeq&&n.data.finalNode?.messageId===source.messageId:(n.kind==='user'||n.kind==='steering')&&(n.data.seq??n.anchorSeq)===source.eventSeq));});
-   const element=await waitFor(()=>document.querySelector('[data-chat-node-key="'+CSS.escape(node.key)+'"]:not([data-chat-group-part="reasoning"])'));
+   const node=await waitFor(()=>nodeForRow(b,row));
+   const element=await waitFor(()=>elementForNode(node));
    await expandSource(element);
    if(!element.isConnected||selected()?.id!==source.sessionId)throw recallError('navigation-superseded','当前窗口已切换到其他对话，请重新回跳。');
    await positionAndHighlight(element,source);window.focus();return row;
   }
   async function processCommands(commands){commandBusy=true;try{for(const cmd of commands){let result={viewId,id:cmd.id,ok:true};try{await reveal(cmd.source);}catch(e){result={...result,ok:false,...navigationFailure(e,cmd.source)};}navigationAcks.push(result);}}finally{commandBusy=false;heartbeat();}}
-  async function publishHeartbeat(){if(stopped)return;try{if(!info){info=await remote('info',{});assertCompatible(info.version,ctx);configureDomVersion(info.version);supported=info.supported;}const row=selected();const reply=await remote('publishContext',{viewId,instanceId:info.instanceId,sessionId:row?.id||'',sessionTitle:(row?.title||row?.displayTitle||'').slice(0,500),...focusTracker.snapshot(),supported,version:info.version});if(reply.contextProtocol!==2)throw recallError('context-protocol','请同时更新回看插件与浮窗，并重新加载 Harness 页面。');supported=info.supported;while(navigationAcks.length){await remote('navigationResult',navigationAcks[0]);navigationAcks.shift();}if(!commandBusy){const {commands}=await remote('pollCommands',{viewId,instanceId:info.instanceId});if(commands.length)void processCommands(commands);}lastError='';}catch(e){if(!info||!SUPPORTED_VERSIONS.includes(info.version)||e.code==='context-protocol'||e.code==='RECALL_CONTEXT_PROTOCOL'){supported=false;if(lastError!==e.message){notify(e.message);lastError=e.message;}}}}
+  async function publishHeartbeat(){if(stopped)return;try{
+   if(!info)info=await remote('info',{});
+   let row=null;try{row=selected();}catch{}
+   compatibility=assessCompatibility(row);supported=compatibility.state==='ready';
+   const reply=await remote('publishContext',{viewId,instanceId:info.instanceId,sessionId:row?.id||'',sessionTitle:(row?.title||row?.displayTitle||'').slice(0,500),...focusTracker.snapshot(),supported,version:info.version,compatibility});
+   if(reply.contextProtocol!==2||reply.compatibilityProtocol!==1)throw recallError('context-protocol','请同时更新回看插件与浮窗，并重新加载 Harness 页面。');
+   while(navigationAcks.length){await remote('navigationResult',navigationAcks[0]);navigationAcks.shift();}
+   if(supported&&!commandBusy){const {commands}=await remote('pollCommands',{viewId,instanceId:info.instanceId});if(commands.length)void processCommands(commands);}
+   if(compatibility.state==='incompatible'){if(lastError!==compatibility.message)notify(compatibility.message);lastError=compatibility.message;}else lastError='';
+  }catch(e){supported=false;if(lastError!==e.message){notify(e.message||'回看连接检查未完成，请稍后重试。');lastError=e.message;}}}
   const heartbeatQueue=createHeartbeatQueue(publishHeartbeat);
   const heartbeat=()=>heartbeatQueue.request();
   function Action({messageId}){return h('button',{type:'button',className:'mengcang-recall-action',title:'留作回看','aria-label':'留作回看',onClick:()=>saveMessage(messageId)},'留作回看');}
-  ctx.slots.inject('conversation.chat.assistant-actions',()=>ctx.slots.register({name:'conversation.chat.assistant-actions',id:'mengcang-recall',order:90},Action));
+  if(typeof ctx.slots?.inject==='function'&&typeof ctx.slots?.register==='function')ctx.slots.inject('conversation.chat.assistant-actions',()=>ctx.slots.register({name:'conversation.chat.assistant-actions',id:'mengcang-recall',order:90},Action));
   const style=document.createElement('style');style.textContent='.mengcang-recall-action{font:inherit;font-size:12px;background:transparent;border:0;border-radius:5px;color:var(--dsw-alias-label-tertiary);padding:4px 7px;cursor:pointer}.mengcang-recall-action:hover{background:var(--dsw-alias-interactive-bg-hover)}.mengcang-recall-menu,.mengcang-recall-toast{position:fixed;z-index:2147483000;background:var(--dsw-specific-menu,#fff);color:var(--dsw-alias-label-primary,#222);border:1px solid var(--dsw-alias-border-l1,#ddd);box-shadow:0 5px 25px #0002;border-radius:9px;padding:7px;font:13px/1.5 system-ui}.mengcang-recall-menu button,.mengcang-recall-toast button{border:0;border-radius:5px;padding:7px 12px;background:transparent;color:inherit;cursor:pointer}.mengcang-recall-menu button:hover{background:var(--dsw-alias-interactive-bg-hover,#eee)}.mengcang-recall-toast{bottom:28px;left:50%;transform:translateX(-50%);max-width:80vw;padding:10px 16px}.mengcang-recall-highlight{outline:2px solid #c69740;outline-offset:6px;border-radius:4px}::highlight(mengcang-recall){background:#f5d889;color:#242019}';style.textContent+='.mengcang-recall-menu{display:flex;padding:4px;gap:0}.mengcang-recall-menu:not(.mengcang-recall-topic)>button+button{border-left:1px solid var(--dsw-alias-border-l1,#ddd);border-top-left-radius:0;border-bottom-left-radius:0}.mengcang-recall-topic{display:block;width:260px;padding:12px}.mengcang-recall-topic form{display:grid;gap:8px}.mengcang-recall-topic label{display:grid;gap:6px;font-weight:500}.mengcang-recall-topic input{min-width:0;width:100%;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l1,#aaa);border-radius:6px;padding:7px 9px;font:inherit;color:inherit;background:transparent;outline-offset:2px}.mengcang-recall-topic-error{color:var(--dsw-alias-function-error,#bf4b45);font-size:12px;min-height:0}.mengcang-recall-topic-error:empty{display:none}.mengcang-recall-topic-actions{display:flex;justify-content:flex-end;gap:4px}';document.head.append(style);
   document.addEventListener('contextmenu',menuFor);document.addEventListener('pointerdown',pointerDown);document.addEventListener('pointerup',pointerUp);document.addEventListener('pointercancel',pointerUp);document.addEventListener('selectionchange',scheduleSelection);document.addEventListener('keyup',selectionKeyUp);document.addEventListener('keydown',selectionEscape,true);document.addEventListener('scroll',scrolled,true);window.addEventListener('resize',scrolled);
   const focus=()=>{focusTracker.observe();if(!document.hasFocus())removeMenu();heartbeat();};window.addEventListener('focus',focus);window.addEventListener('blur',focus);
-  const timer=setInterval(heartbeat,2000);const unsub=ctx.sessions.list.subscribe(()=>{if(menuPayload&&!stillCurrent(menuPayload))removeMenu();if(document.hasFocus())heartbeat();});heartbeat();
+  const timer=setInterval(heartbeat,2000);const unsub=ctx.sessions?.list?.subscribe?.(()=>{if(menuPayload&&!stillCurrent(menuPayload))removeMenu();if(document.hasFocus())heartbeat();})||(()=>{});heartbeat();
   ctx.effect(()=>()=>{stopped=true;heartbeatQueue.dispose();clearInterval(timer);unsub();if(selectionFrame)cancelAnimationFrame(selectionFrame);document.removeEventListener('contextmenu',menuFor);document.removeEventListener('pointerdown',pointerDown);document.removeEventListener('pointerup',pointerUp);document.removeEventListener('pointercancel',pointerUp);document.removeEventListener('selectionchange',scheduleSelection);document.removeEventListener('keyup',selectionKeyUp);document.removeEventListener('keydown',selectionEscape,true);document.removeEventListener('scroll',scrolled,true);window.removeEventListener('resize',scrolled);window.removeEventListener('focus',focus);window.removeEventListener('blur',focus);removeMenu();toast?.remove();style.remove();clearTimeout(toastTimer);});
  }};
 }

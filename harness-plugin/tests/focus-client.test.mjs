@@ -8,11 +8,11 @@ test('real Client focus listeners retain a busy focus/blur transition and send t
  const blocked=new Promise(resolve=>release=resolve),sent=[],listeners={};
  const element=()=>({append(){},remove(){},setAttribute(){},style:{}});
  const context=vm.createContext({
-  document:{hasFocus:()=>focused,createElement:element,head:{append(){}},body:{append(){}},addEventListener(){},removeEventListener(){}},
+  document:{hasFocus:()=>focused,createElement:element,head:{append(){}},body:{append(){}},querySelectorAll:()=>[],addEventListener(){},removeEventListener(){}},
   window:{addEventListener:(name,fn)=>listeners[name]=fn,removeEventListener(){}},
   crypto:{randomUUID:()=> 'test-view'},performance:{timeOrigin:0,now:()=>time},
   setTimeout,clearTimeout,setInterval:()=>0,clearInterval(){},
-  currentSession:s=>s.selected,assertCompatible(){},configureDomVersion(){},SUPPORTED_VERSIONS:['0.2.1-rc.3'],
+  currentSession:s=>s.selected,assertCompatible(){},configureDomVersion(){},isVerifiedHarnessVersion:()=>true,inspectSessionInterfaces:()=>null,
   createCaptureDispatcher:()=>()=>{},recallError:(code,message)=>Object.assign(Error(message),{code}),
  });
  const source=(await readFile(new URL('../src/focus.js',import.meta.url),'utf8')).replace(/^export /gm,'')+'\n'+await readFile(new URL('../src/client.js',import.meta.url),'utf8');
@@ -20,7 +20,7 @@ test('real Client focus listeners retain a busy focus/blur transition and send t
  const client=vm.runInContext('createClient({createElement(){}})',context);
  const ctx={sessions:{list:{getSnapshot:()=>({selected}),subscribe:fn=>{subscription=fn;return ()=>{};}}},slots:{inject(){},register(){}},effect:fn=>{dispose=fn();},connection:{rpc:{async call(_path,method,{args:{request}}){
   if(method==='recall/info')return {ok:true,value:{instanceId:'fixture',version:'0.2.1-rc.3',supported:true}};
-  if(method==='recall/publishContext'){sent.push(request);if(sent.length===1)await blocked;return {ok:true,value:{accepted:true,contextProtocol:2}};}
+  if(method==='recall/publishContext'){sent.push(request);if(sent.length===1)await blocked;return {ok:true,value:{accepted:true,contextProtocol:2,compatibilityProtocol:1}};}
   if(method==='recall/pollCommands')return {ok:true,value:{commands:[]}};
   throw Error('Unexpected RPC');
  }}}};
