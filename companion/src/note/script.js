@@ -10,22 +10,67 @@
   const title = document.getElementById('title'), points = document.getElementById('points');
   const more = document.getElementById('more'), summary = document.getElementById('summary');
   const status = document.getElementById('note-status');
+  const petWrap = document.getElementById('pet'), petCanvas = document.getElementById('pet-canvas');
+  const petFallback = document.getElementById('pet-fallback');
+  const collapsedSize = res.collapsedSize || { width: 100, height: 132 };
   const btnSize = document.getElementById('btn-size'), btnTag = document.getElementById('btn-gem');
   const btnClose = document.getElementById('btn-close'), btnJump = document.getElementById('btn-jump');
   const contents = [points, more, btnJump, status];
-  const foldingButtons = [btnSize, btnClose];
+  const foldingButtons = [btnSize, btnTag, btnClose];
   const paint = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   let preparing = false, morph = null, serial = 0, fitFrame = 0, motionFrame = 0, groupBusy = false, motionIdleSerial = 0, readTimer, readSaved = false;
+  let ignoreMouse = false, lastPointer = null, pointerOverPet = false;
+  const pet = window.RecallWhalePet.create(petCanvas, { source: res.petSource, seed: id, reduced: reducedMotion.matches,
+    onReady: () => { card.dataset.petReady = 'true'; syncHit(); },
+    onError: () => { card.dataset.petReady = 'error'; petFallback.textContent = '角色暂未加载，点击展开便签'; syncHit(); },
+  });
+  function setIgnore(value) { if (ignoreMouse !== value) { ignoreMouse = value; window.api.stickySetIgnore(value); } }
+  function syncHit(point = lastPointer) {
+    if (currentState !== 'gem' || preparing || morph || drag || groupBusy) { setIgnore(false); return; }
+    if (point) setIgnore(!pet.hit(point.x, point.y));
+  }
+  function syncPet() {
+    if (document.hidden || currentState !== 'gem') pet.setMode('hidden');
+    else if (preparing || morph || groupBusy) pet.setMode('preview');
+    else if (drag?.started) pet.setMode('held');
+    // A native drag-idle acknowledgement must let the short release/greeting
+    // pose finish. The pose controller already returns to idle on its timer.
+    else if (!['wave', 'released'].includes(petCanvas.dataset.mode)) pet.setMode('idle');
+  }
+  function trackPointer(point) {
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+    lastPointer = point;
+    if (currentState === 'gem' && !preparing && !morph && !groupBusy && !drag) {
+      const over = pet.hit(point.x, point.y);
+      if (over && !pointerOverPet && petCanvas.dataset.mode !== 'released') pet.setMode('wave');
+      pointerOverPet = over;
+    }
+    syncHit();
+  }
+  async function refreshPointer() {
+    // A restored/resized window may sit under a stationary pointer. Read once
+    // at handoff; ordinary movement uses forwarded mousemove, with no polling.
+    if (currentState !== 'gem' || preparing || morph || groupBusy || drag) return;
+    const version = serial;
+    try {
+      const point = await window.api.stickyPointer();
+      if (version === serial && currentState === 'gem' && !preparing && !morph && !groupBusy && !drag) trackPointer(point);
+    } catch { setIgnore(false); }
+  }
 
   function applyMode(mode) {
     card.classList.toggle('large', mode === 'large');
     card.classList.toggle('tag', mode === 'gem');
+    card.dataset.mode = mode;
     btnTag.textContent = mode === 'gem' ? '↗' : '—';
-    btnTag.title = mode === 'gem' ? '展开便签' : '收起为标签';
+    btnTag.title = mode === 'gem' ? '展开便签' : '收起为鲸鱼娘';
+    btnTag.setAttribute('aria-label', btnTag.title);
     bar.tabIndex = mode === 'gem' ? 0 : -1;
     bar.setAttribute('aria-expanded', String(mode !== 'gem'));
-    bar.setAttribute('aria-label', item.displayTitle || item.title);
+    bar.setAttribute('role', mode === 'gem' ? 'button' : 'group');
+    bar.setAttribute('aria-label', mode === 'gem' ? `鲸鱼娘，点击展开便签：${item.displayTitle || item.title}` : item.displayTitle || item.title);
+    bar.title = mode === 'gem' ? `${item.displayTitle || item.title} · 点击展开，拖动移动` : '';
   }
   function naturalHeight() {
     const px = value => Number.parseFloat(value) || 0;
@@ -38,9 +83,10 @@
       + summary.scrollHeight + px(space.marginTop) + px(space.marginBottom) + outer(btnJump) + outer(status));
   }
   function measureMode(mode, width, height) {
-    const elements = [card, bar, ...foldingButtons, ...contents];
+    const elements = [card, bar, petWrap, ...foldingButtons, ...contents];
     const styles = elements.map(element => element.style.cssText), className = card.className;
-    const label = btnTag.textContent, help = btnTag.title, tabIndex = bar.tabIndex, expanded = bar.getAttribute('aria-expanded');
+    const label = btnTag.textContent, help = btnTag.title, buttonLabel = btnTag.getAttribute('aria-label'), modeBefore = card.dataset.mode;
+    const attributes = Object.fromEntries(['tabindex', 'aria-expanded', 'aria-label', 'role', 'title'].map(name => [name, bar.getAttribute(name)]));
     resetGeometry(); applyMode(mode);
     card.style.width = `${width}px`; card.style.height = `${height}px`;
     const css = getComputedStyle(card), barCSS = getComputedStyle(bar);
@@ -50,8 +96,9 @@
       contentHeight: naturalHeight() };
     elements.forEach((element, index) => { element.style.cssText = styles[index]; });
     card.className = className;
-    btnTag.textContent = label; btnTag.title = help; bar.tabIndex = tabIndex;
-    bar.setAttribute('aria-expanded', expanded);
+    btnTag.textContent = label; btnTag.title = help; btnTag.setAttribute('aria-label', buttonLabel);
+    for (const [name, value] of Object.entries(attributes)) { if (value === null) bar.removeAttribute(name); else bar.setAttribute(name, value); }
+    if (modeBefore === undefined) delete card.dataset.mode; else card.dataset.mode = modeBefore;
     return result;
   }
   function fitExpanded() {
@@ -70,7 +117,8 @@
     }, 700);
   }
   function resetGeometry() {
-    for (const name of ['left', 'top', 'right', 'bottom', 'width', 'height', 'borderRadius', 'paddingTop', 'paddingBottom', 'paddingLeft', 'paddingRight']) card.style[name] = '';
+    for (const name of ['left', 'top', 'right', 'bottom', 'width', 'height', 'borderRadius', 'backgroundColor', 'paddingTop', 'paddingBottom', 'paddingLeft', 'paddingRight']) card.style[name] = '';
+    petWrap.style.opacity = ''; petWrap.style.visibility = '';
     bar.style.height = ''; bar.style.paddingBottom = '';
     for (const element of foldingButtons) {
       for (const name of ['display', 'width', 'opacity', 'marginLeft']) element.style[name] = '';
@@ -103,9 +151,11 @@
     const interrupted = Boolean(morph);
     const previousRange = morph?.range;
     const version = ++serial;
+    const ownedFocus = document.hasFocus() && card.contains(document.activeElement);
     cancelAnimationFrame(motionFrame);
     const rect = card.getBoundingClientRect(), css = getComputedStyle(card);
     const radius = css.borderRadius;
+    const background = css.backgroundColor, petOpacity = Number(getComputedStyle(petWrap).opacity);
     const padding = Object.fromEntries(['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'].map(name => [name, css[name]]));
     const header = { height: `${bar.getBoundingClientRect().height}px`, paddingBottom: getComputedStyle(bar).paddingBottom };
     const buttons = foldingButtons.map(element => {
@@ -115,6 +165,9 @@
     });
     const opacity = contents.map(element => getComputedStyle(element).display === 'none' ? 0 : Number(getComputedStyle(element).opacity));
     cancelAnimations(); morph = null; preparing = true; clearTimeout(readTimer);
+    setIgnore(false); pointerOverPet = false;
+    card.dataset.transition = next === 'gem' ? 'closing' : 'opening';
+    pet.setMode(next === 'gem' ? 'preview' : 'reading');
     const height = next === 'large' ? measureMode('large', 328, 588).contentHeight : undefined;
     Object.assign(card.style, anchored(rect, { x: 0, y: 0, width: innerWidth, height: innerHeight }), padding, { borderRadius: radius });
     let geometry;
@@ -123,7 +176,7 @@
       geometry = await window.api.stickyPrepareMorph(next,
         { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, height);
       if (geometry?.deferred) {
-        preparing = false; resetGeometry(); applyMode(currentState);
+        preparing = false; resetGeometry(); applyMode(currentState); delete card.dataset.transition; syncPet();
         // An idle notification can arrive before the deferred IPC reply.
         if (motionIdleSerial !== idleBeforePrepare && desiredState !== currentState) void morphTo(desiredState);
         return;
@@ -139,7 +192,7 @@
         if (geometry?.resize) await paint();
       }
     } catch { status.textContent = '便签暂未展开，请重试'; }
-    if (!geometry) { preparing = false; resetGeometry(); applyMode(currentState); return; }
+    if (!geometry) { preparing = false; resetGeometry(); applyMode(currentState); delete card.dataset.transition; syncPet(); return; }
     currentState = next;
     if (next !== 'gem') lastOpenState = next;
     const opening = next !== 'gem';
@@ -147,28 +200,33 @@
     const target = measureMode(next, to.width, to.height);
     applyMode(opening ? next : lastOpenState);
     const frame = r => ({ left: `${r.x}px`, top: `${r.y}px`, width: `${r.width}px`, height: `${r.height}px` });
-    Object.assign(card.style, frame(from), { right: 'auto', bottom: 'auto', borderRadius: radius }, padding);
+    Object.assign(card.style, frame(from), { right: 'auto', bottom: 'auto', borderRadius: radius, backgroundColor: background }, padding);
+    Object.assign(petWrap.style, { visibility: 'visible', opacity: String(petOpacity) });
     Object.assign(bar.style, header);
     foldingButtons.forEach((element, index) => Object.assign(element.style, buttons[index], { display: 'block' }));
     contents.forEach((element, index) => {
       element.style.width = `${Math.max(0, (opening ? to.width : from.width) - 24)}px`;
       element.style.opacity = String(opacity[index]);
     });
-    const range = previousRange || { width: Math.max(from.width, to.width) - 188, height: Math.max(from.height, to.height) - 40 };
+    const range = previousRange || { width: Math.max(from.width, to.width) - collapsedSize.width, height: Math.max(from.height, to.height) - collapsedSize.height };
     const remaining = Math.min(1, Math.max(Math.abs(to.width - from.width) / Math.max(1, range.width), Math.abs(to.height - from.height) / Math.max(1, range.height)));
     const baseDuration = opening ? 260 : 190;
     const duration = reducedMotion.matches ? 0 : interrupted ? Math.max(80, Math.round(baseDuration * Math.sqrt(remaining))) : baseDuration;
     const options = { duration, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' };
     const targetPadding = Object.fromEntries(Object.keys(padding).map(name => [name, target[name]]));
     const animation = card.animate([
-      { ...frame(from), ...padding, borderRadius: radius },
-      { ...frame(to), ...targetPadding, borderRadius: next === 'gem' ? '18px' : '10px' },
+      { ...frame(from), ...padding, borderRadius: radius, backgroundColor: background },
+      { ...frame(to), ...targetPadding, borderRadius: next === 'gem' ? '0px' : '10px', backgroundColor: opening ? '#fff6b8' : 'rgba(255,246,184,0)' },
     ], options);
     bar.animate([header, { height: target.barHeight, paddingBottom: target.barPadding }], options);
     foldingButtons.forEach((element, index) => element.animate([buttons[index], {
       width: opening ? '22px' : '0px', opacity: opening ? 1 : 0, marginLeft: opening ? '0px' : '-4px',
     }], options));
     morph = { version, token: geometry.token, animation, range }; preparing = false;
+    petWrap.animate([{ opacity: petOpacity }, { opacity: opening ? 0 : 1 }], {
+      duration: reducedMotion.matches ? 0 : opening ? Math.min(110, duration) : duration * .55,
+      delay: reducedMotion.matches || opening ? 0 : duration * .45, easing: 'ease-out', fill: 'forwards',
+    });
     // The changing card owns the timeline. Attached windows consume its eased
     // progress, so they cannot race ahead on a separate native animation.
     function followFrame() {
@@ -190,18 +248,21 @@
       if (geometry.grouped) window.api.stickyMorphProgress(geometry.token, 1);
       cancelAnimations(); applyMode(next);
       Object.assign(card.style, anchored(to, geometry.viewport, geometry.target), targetPadding,
-        { borderRadius: next === 'gem' ? '18px' : '10px' });
+        { borderRadius: next === 'gem' ? '0px' : '10px', backgroundColor: opening ? '#fff6b8' : 'rgba(255,246,184,0)' });
       const trimsSurface = ['x', 'y', 'width', 'height'].some(key => geometry.viewport[key] !== geometry.target[key]);
       if (trimsSurface) await paint();
       await window.api.stickyFinishMorph(geometry.token);
       if (trimsSurface) await paint();
       if (morph?.version !== version) return;
       cancelAnimations(); morph = null; preparing = false; resetGeometry(); applyMode(next);
+      delete card.dataset.transition; lastPointer = null; setIgnore(false); syncPet();
+      void refreshPointer();
+      if (ownedFocus && document.hasFocus()) (next === 'gem' ? bar : btnTag).focus({ preventScroll: true });
       fitExpanded(); scheduleRead();
       if (desiredState !== next) void morphTo(desiredState);
     }).catch(error => {
       if (error.name !== 'AbortError' && morph?.version === version) {
-        preparing = false; status.textContent = '便签过渡尚未完成，请重新点按';
+        preparing = false; delete card.dataset.transition; syncPet(); setIgnore(false); status.textContent = '便签过渡尚未完成，请重新点按';
       }
     });
     if (desiredState !== next) void morphTo(desiredState);
@@ -211,7 +272,10 @@
     title.title = title.textContent;
     window.RecallText.render(points, item.text.length > 360 ? item.text.slice(0, 360) + '…' : item.text, openLink);
     window.RecallText.render(summary, item.text, openLink);
-    bar.setAttribute('aria-label', item.displayTitle || item.title); fitExpanded();
+    // An item update may arrive while the paper is folding. Preserve the
+    // current transition's classes until it hands back the stable surface.
+    if (!morph && !preparing) applyMode(currentState);
+    fitExpanded();
   }
   async function openLink(url) {
     const result = await window.api.openLink(url);
@@ -228,14 +292,19 @@
     btnJump.disabled = false;
   };
   bar.onkeydown = event => {
+    if (event.repeat) return;
     if ((currentState === 'gem' || morph || preparing) && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); toggleTag(); }
   };
+  // Native accessibility activation dispatches a click without pointer events.
+  bar.addEventListener('click', event => { if (event.detail === 0 && event.target === bar && (currentState === 'gem' || morph || preparing)) toggleTag(); });
   window.addEventListener('keydown', event => {
     if (event.key === 'Escape' && desiredState !== 'gem') { event.preventDefault(); void morphTo('gem'); }
   });
   let drag = null;
   bar.onpointerdown = event => {
     if (event.button !== 0 || (event.target !== bar && event.target !== title)) return;
+    if (currentState === 'gem' && !preparing && !morph && !pet.hit(event.clientX, event.clientY)) { setIgnore(true); return; }
+    setIgnore(false);
     event.preventDefault(); drag = { x: event.screenX, y: event.screenY, pointer: event.pointerId, moved: false, started: false,
       canDrag: !preparing && !morph && !groupBusy, activate: currentState === 'gem' || Boolean(morph) || preparing };
     bar.setPointerCapture(event.pointerId);
@@ -245,7 +314,7 @@
     const dx = event.screenX - drag.x, dy = event.screenY - drag.y;
     if (!drag.moved && Math.hypot(dx, dy) >= 4) {
       drag.moved = true;
-      if (drag.canDrag) { drag.started = true; window.api.stickyDragStart(); }
+      if (drag.canDrag) { drag.started = true; if (currentState === 'gem') pet.setMode('held'); window.api.stickyDragStart(); }
     }
     if (drag.started) window.api.stickyDragMove(dx, dy);
   }
@@ -254,22 +323,25 @@
     if (!drag) return;
     const { moved, pointer, started, activate: clickAllowed } = drag; drag = null;
     if (bar.hasPointerCapture(pointer)) bar.releasePointerCapture(pointer);
-    if (started) window.api.stickyDragEnd();
+    if (started) { window.api.stickyDragEnd(); if (currentState === 'gem') pet.setMode('released'); }
     else if (activate && !moved && clickAllowed) toggleTag();
   }
   bar.addEventListener('pointerup', event => { moveDrag(event); endDrag(); });
   bar.addEventListener('pointercancel', () => endDrag(false));
   bar.addEventListener('lostpointercapture', () => endDrag(false));
   window.addEventListener('blur', () => endDrag(false));
-  window.api.onStickyMotionBusy(() => { groupBusy = true; });
+  window.addEventListener('mousemove', event => trackPointer({ x: event.clientX, y: event.clientY }));
+  window.addEventListener('mouseleave', () => { lastPointer = null; pointerOverPet = false; if (currentState === 'gem' && !drag && !morph && !preparing) setIgnore(true); });
+  window.api.onStickyMotionBusy(() => { groupBusy = true; setIgnore(false); syncPet(); });
   window.api.onStickyMotionIdle(() => {
-    groupBusy = false; motionIdleSerial++;
+    groupBusy = false; motionIdleSerial++; lastPointer = null; setIgnore(false); syncPet();
+    void refreshPointer();
     if (!preparing && !morph && desiredState !== currentState) void morphTo(desiredState);
     else fitExpanded();
   });
   window.api.onStickyState(next => {
     currentState = next;
-    if (!morph && !preparing) { desiredState = next; applyMode(next); resetGeometry(); }
+    if (!morph && !preparing) { desiredState = next; applyMode(next); resetGeometry(); lastPointer = null; setIgnore(false); syncPet(); void refreshPointer(); }
     fitExpanded(); scheduleRead();
   });
   window.api.onStickyItem(display);
@@ -277,6 +349,8 @@
   const observer = new ResizeObserver(fitExpanded);
   observer.observe(summary); observer.observe(status);
   window.addEventListener('resize', fitExpanded);
-  document.addEventListener('visibilitychange', scheduleRead);
-  display(item); applyMode(currentState); scheduleRead();
+  document.addEventListener('visibilitychange', () => { scheduleRead(); syncPet(); if (document.hidden) setIgnore(false); else void refreshPointer(); });
+  reducedMotion.addEventListener('change', () => pet.setReduced(reducedMotion.matches));
+  window.addEventListener('beforeunload', () => pet.destroy());
+  display(item); applyMode(currentState); syncPet(); void refreshPointer(); scheduleRead();
 })();

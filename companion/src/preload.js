@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('api', {
   stickyRead: () => ipcRenderer.invoke('sticky:read'),
   stickyClose: () => ipcRenderer.send('sticky:close'),
   stickySetIgnore: (ignore) => ipcRenderer.send('sticky:set-ignore', ignore),
+  stickyPointer: () => ipcRenderer.invoke('sticky:pointer'),
   setReview: (id, due) => ipcRenderer.invoke('review:set', id, due),
   onStickyItem: cb => on('sticky:item', cb),
   onStickyError: cb => on('sticky:error', cb),

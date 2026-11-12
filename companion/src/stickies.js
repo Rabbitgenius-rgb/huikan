@@ -3,6 +3,7 @@ const { BrowserWindow, screen } = require('electron');
 const path = require('path');
 const { state, PRELOAD, MAX_STICKIES, SIZES, notifyPinned } = require('./state');
 const settings = require('./settings');
+const { loadWhalePetAsset } = require('./whale-pet-asset.cjs');
 const DOCK_GAP = 8, SNAP_DISTANCE = 24;
 let protectWindow = () => {};
 let decorateItem = item => item;
@@ -118,6 +119,7 @@ function createWindow(id, point) {
     movable: false,
     fullscreenable: false,
     skipTaskbar: true,
+    acceptFirstMouse: true,
     alwaysOnTop: true,
     show: false,
     webPreferences: {
@@ -327,6 +329,10 @@ function wire(ipcMain, options = {}) {
   let tearOwner = null;
   const ownsTear = event => tearOwner && event.sender === tearOwner.sender && (!event.senderFrame || event.senderFrame === event.sender.mainFrame);
   const releaseOwnedTear = () => { tearOwner = null; endTear(); };
+  const cursorFor = rec => {
+    const point = screen.getCursorScreenPoint(), bounds = rec.win.getBounds();
+    return { x: point.x - bounds.x, y: point.y - bounds.y };
+  };
   // A source switch may hide the detail window before its mouseup can arrive.
   const tearWatch = setInterval(() => {
     if (!tearOwner) return;
@@ -336,15 +342,20 @@ function wire(ipcMain, options = {}) {
   tearWatch.unref();
   state.panel?.once('closed', () => { clearInterval(tearWatch); if (tearOwner) releaseOwnedTear(); });
   const recOf = e => (!e.senderFrame || e.senderFrame === e.sender.mainFrame) ? state.byWc.get(e.sender.id) : null;
+  ipcMain.handle('sticky:pointer', e => {
+    const rec = recOf(e); return rec && !rec.win.isDestroyed() ? cursorFor(rec) : null;
+  });
 
-  ipcMain.handle('sticky:init', (e) => {
+  ipcMain.handle('sticky:init', async (e) => {
     const rec = recOf(e);
     if (!rec) return null;
     // A renderer reload must recover the destination rather than its temporary
     // animation viewport, without changing the saved note or its source.
     if (rec.transition) finishMorph(rec, rec.transition.token);
-    const item = rec.item;
-    return { item, state: rec.state, settings: settings.current() };
+    const petSource = await loadWhalePetAsset();
+    if (rec.win.isDestroyed()) return null;
+    return { item: rec.item, state: rec.state, settings: settings.current(), petSource,
+      collapsedSize: { width: SIZES.gem.w - 12, height: SIZES.gem.h - 12 } };
   });
 
   ipcMain.on('sticky:set-state', (e, next) => {
@@ -413,11 +424,12 @@ function wire(ipcMain, options = {}) {
     for (const note of [root, ...followers(root)]) note.win.webContents.send('sticky:motion-idle');
   });
 
-  // The gem is non-rectangular: let clicks fall through everywhere except on its shape.
+  // Ignore only stable collapsed pets. Late hit-test messages must never make
+  // an opening note or an active drag lose mouse input.
   ipcMain.on('sticky:set-ignore', (e, ignore) => {
     const rec = recOf(e);
     if (!rec || rec.win.isDestroyed() || typeof ignore !== 'boolean') return;
-    if (ignore) rec.win.setIgnoreMouseEvents(true, { forward: true });
+    if (ignore && rec.state === 'gem' && !rec.transition && !rec.drag && !rec.following) rec.win.setIgnoreMouseEvents(true, { forward: true });
     else rec.win.setIgnoreMouseEvents(false);
   });
 
@@ -447,10 +459,14 @@ function setAllHidden(hidden) {
 async function restore() {
   for (const [id, layout] of Object.entries(state.service.pinnedLayouts()).slice(0, MAX_STICKIES)) {
     if (!state.service.getItem(id) || !validPoint(layout.x, layout.y) || !SIZES[layout.state]) continue;
-    const win = createWindow(id, { x: layout.x + SIZES.note.w / 2, y: layout.y + 20 });
-    const rec = register(id, win, { x: layout.x, y: layout.y }, layout.state);
+    // Older title tags were wider. Preserve their saved right edge when the
+    // same collapsed note is restored as a companion.
+    const x = layout.state === 'gem' && Number.isFinite(layout.width) && layout.width > 0 && layout.width < 10000
+      ? layout.x + layout.width - SIZES.gem.w : layout.x;
+    const win = createWindow(id, { x: x + SIZES.note.w / 2, y: layout.y + 20 });
+    const rec = register(id, win, { x, y: layout.y }, layout.state);
     rec.dockBelow = typeof layout.dockBelow === 'string' ? layout.dockBelow : null;
-    win.setBounds({ x: layout.x, y: layout.y, width: SIZES[layout.state].w, height: SIZES[layout.state].h });
+    win.setBounds({ x, y: layout.y, width: SIZES[layout.state].w, height: SIZES[layout.state].h });
   }
   // Existing nearby labels acquire a dock without moving independent notes.
   for (const rec of [...living()].sort((a, b) => stableBounds(a).y - stableBounds(b).y)) {

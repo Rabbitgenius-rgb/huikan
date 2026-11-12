@@ -9,9 +9,10 @@
   <body>
     <div id="card" class="card">
       <div class="bar" id="bar">
+        <div class="pet" id="pet" aria-hidden="true"><canvas id="pet-canvas" width="192" height="256"></canvas><span class="pet-fallback" id="pet-fallback">鲸鱼娘加载中<br>点击展开便签</span></div>
         <span class="bar-title" id="title"></span>
         <button class="btn" id="btn-size" title="展开/还原">⤢</button>
-        <button class="btn" id="btn-gem" title="收起为标签">—</button>
+        <button class="btn" id="btn-gem" title="收起为鲸鱼娘" aria-label="收起为鲸鱼娘">—</button>
         <button class="btn" id="btn-close" title="取消贴出">✕</button>
       </div>
       <div class="points recall-excerpt" id="points"></div>
@@ -23,6 +24,7 @@
     </div>
 
     <script src="../shared/render-text.js"></script>
+    <script src="whale-pet.js"></script>
     <script src="script.js"></script>
   </body>
 </html>
