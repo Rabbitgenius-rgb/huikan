@@ -22,8 +22,8 @@ const state = {
 const PRELOAD = path.join(__dirname, 'preload.js');
 const MAX_STICKIES = 5;
 const SIZES = {
-  // Retain the stored mode key; its first-version surface is now a title tag.
-  gem: { w: 200, h: 52 },
+  // Keep the persisted key; collapsed notes are carried by the whale companion.
+  gem: { w: 112, h: 144 },
   note: { w: 300, h: 236 },
   large: { w: 340, h: 430 },
 };
