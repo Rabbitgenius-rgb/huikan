@@ -22,7 +22,7 @@ html[data-glass-high-contrast="true"] :is(.panel, #excerpt) {
   color: CanvasText !important;
   border: 1px solid CanvasText;
 }
-html[data-glass-high-contrast="true"] :is(.title, #conv-title, .chapter-title, .review-count, .connection, header, footer, .topic-meta, .topic-count, .topic-brief, .inbox-note, .item-action, .icon-button, .topic-feedback) {
+html[data-glass-high-contrast="true"] :is(.title, #conv-title, .chapter-title, .review-count, .connection, header, footer, .topic-meta, .topic-count, .topic-brief, .inbox-note, .organize-button, .inline-button, .item-action, .icon-button, .topic-feedback) {
   color: CanvasText !important;
 }
 @media (forced-colors: active) {

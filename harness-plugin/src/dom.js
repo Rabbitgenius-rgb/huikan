@@ -1,18 +1,23 @@
-// This adapter is intentionally limited to the two listed Harness builds. No React internals.
+// Adapters are pinned to the verified public markup of each Harness build.
 const DOM_SELECTORS={
  '0.2.0-rc.2':{assistant:'.gKv1-q_body',user:'.IzP3Va_bubble'},
  '0.2.1-rc.3':{assistant:'.XNZzAa_body',user:'.AkCqbG_bubble'},
+ '0.2.2-rc.1':{assistant:'.XNZzAa_body',user:'[data-message-bubble]'},
 };
-let domSelectors=null;
-export function configureDomVersion(version){domSelectors=DOM_SELECTORS[version]||null;if(!domSelectors)throw recallError('version-unsupported','当前 Harness 版本尚未适配。');}
+let domSelectors=null,domConfigured=false;
+export function configureDomVersion(version){if(!isHarnessVersion(version))throw recallError('interface-incompatible','Harness 版本信息无效。');domSelectors=DOM_SELECTORS[version]||null;domConfigured=true;}
 export function messageElement(node) { return (node?.nodeType===1?node:node?.parentElement)?.closest('[data-chat-node-key]') || null; }
 export function messageBody(element) {
  if(!element || element.dataset.chatGroupPart==='reasoning')throw recallError('source-unsupported','请选择消息正文。');
  const kind=element.dataset.chatFlowKind;
- const selector=kind==='assistant-step'?domSelectors?.assistant:(kind==='user'||kind==='steering')?domSelectors?.user:null;
- const body=selector && element.querySelector(selector);
- if(!body)throw recallError('structure-unsupported','当前消息结构尚未适配。');
- return body;
+ const assistant=kind==='assistant-step',user=kind==='user'||kind==='steering';
+ const selectors=assistant?[domSelectors?.assistant,'.XNZzAa_body','.gKv1-q_body']:user?['[data-message-bubble]',domSelectors?.user,'.AkCqbG_bubble','.IzP3Va_bubble']:[];
+ const bodies=new Set();
+ if(domConfigured)for(const selector of new Set(selectors.filter(Boolean)))for(const body of element.querySelectorAll(selector)){
+  if(body.closest('[data-chat-node-key]')===element&&!body.closest('[data-chat-group-part="reasoning"],[data-variant="think"]'))bodies.add(body);
+ }
+ if(bodies.size!==1)throw recallError('structure-unsupported','消息正文结构发生变化，无法确认原文范围，请更新回看插件。');
+ return [...bodies][0];
 }
 const EXCLUDED='button,input,textarea,select,script,style,svg,img,video,audio,canvas,[aria-hidden="true"],[data-code-block-banner],[data-message-attachments],[data-variant="think"],[data-slot="conversation.chat.message.images"],.XNZzAa_stopped,.gKv1-q_stopped';
 const BLOCKS=new Set(['P','DIV','PRE','LI','H1','H2','H3','H4','H5','H6','BLOCKQUOTE','TR']);

@@ -5,7 +5,8 @@ const crypto = require('node:crypto');
 const { EventEmitter } = require('node:events');
 
 const VERSION = '0.2.0-rc.2';
-const SUPPORTED_VERSIONS = new Set(['0.2.0-rc.2', '0.2.1-rc.3']);
+const { VERIFIED_HARNESS_VERSIONS, isVerifiedHarnessVersion, compatibleHarnessView } = require('../../shared/harness-compatibility.cjs');
+const SUPPORTED_VERSIONS = new Set(VERIFIED_HARNESS_VERSIONS);
 const CODEX_INSTANCE = /^codex:[a-f0-9]{24}$/;
 const CODEX_THREAD = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|thr_[A-Za-z0-9_-]{1,252})$/i;
 const CLIENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -112,7 +113,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     return task;
   }
   function liveCodexClient(clientId) { const client = codexClients.get(clientId); return !!client && now() - client.seenAt < 10000; }
-  function liveView(v) { return v && now() - v.seenAt < 10000 && v.supported && SUPPORTED_VERSIONS.has(v.version); }
+  function liveView(v) { return v && now() - v.seenAt < 10000 && compatibleHarnessView(v); }
   function withTopic(item) {
     const title = data.topicAssignments[item.id];
     return typeof title === 'string' ? { ...item, manualTopic: title } : item;
@@ -124,7 +125,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     const pending = Object.values(data.outbox).filter(p => keyOf(p.capture.externalSource) === sourceKey).map(p => ({ requestId: p.capture.requestId, title: p.capture.title, text: p.capture.text, externalSource: p.capture.externalSource, error: p.error || null, saving: inFlight.has(p.capture.requestId) }));
     const view = active && views.get(active.viewId);
     const codexActive = active?.provider === 'codex';
-    return { active, items, pending, connected: codexActive ? liveCodexClient(active.clientId) : !!liveView(view), supported: codexActive || (!!view && view.supported && SUPPORTED_VERSIONS.has(view.version)), libraryError, persistenceError, pinned: Object.keys(data.pinned), read: items.filter(item => data.readItems[item.id] === true).map(item => item.id), mode: data.mode };
+    return { active, items, pending, connected: codexActive ? liveCodexClient(active.clientId) : !!liveView(view), supported: codexActive || compatibleHarnessView(view), libraryError, persistenceError, pinned: Object.keys(data.pinned), read: items.filter(item => data.readItems[item.id] === true).map(item => item.id), mode: data.mode };
   }
   const changed = () => events.emit('change', snapshot());
   async function refresh({ afterCurrent = false } = {}) {
@@ -174,11 +175,18 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     const contextSeq = integer(v.contextSeq, 'contextSeq'), focusEpoch = integer(v.focusEpoch, 'focusEpoch');
     if (!contextSeq || (v.focused && !focusEpoch)) throw fail('INVALID_ARGUMENT', '焦点状态序号无效');
     const view = { viewId: string(v.viewId, 'viewId'), instanceId: string(v.instanceId, 'instanceId'), sessionId: string(v.sessionId, 'sessionId', 256, true), sessionTitle: string(v.sessionTitle, 'sessionTitle', 500, true), focused: v.focused, supported: v.supported, version: string(v.version, 'version', 100), contextSeq, focusEpoch, seenAt: now() };
+    if (v.compatibility !== undefined) {
+      const c = v.compatibility;
+      if (!object(c) || c.protocol !== 1 || !['checking', 'ready', 'incompatible'].includes(c.state)) throw fail('COMPATIBILITY_PROTOCOL_UNSUPPORTED', '兼容检查协议不匹配，请同时更新回看与插件。');
+      if (v.supported !== (c.state === 'ready')) throw fail('INVALID_ARGUMENT', '兼容检查结果与连接状态不一致');
+      view.compatibility = { protocol: 1, state: c.state, ...(c.message === undefined ? {} : { message: string(c.message, 'compatibility.message', 300, true) }) };
+    }
+    const reply = accepted => ({ accepted, contextProtocol: 2, ...(view.compatibility ? { compatibilityProtocol: 1 } : {}) });
     const previous = views.get(view.viewId);
     if (previous && previous.instanceId !== view.instanceId) throw fail('INVALID_ARGUMENT', '窗口来源身份发生变化');
     const trace = (accepted, reason) => { try { onContext({ contextProtocol: 2, viewId: view.viewId, instanceId: view.instanceId, sessionId: view.sessionId, contextSeq, focusEpoch, reportedFocused: view.focused, accepted, reason, activeViewId: data.active?.viewId || '', activeInstanceId: data.active?.instanceId || '', activeSessionId: data.active?.sessionId || '', activeFocusEpoch: data.active?.focusEpoch || 0 }); } catch {} };
-    if (previous && contextSeq <= previous.contextSeq) { trace(false, 'stale-sequence'); return { accepted: false, contextProtocol: 2 }; }
-    if ((previous && focusEpoch < previous.focusEpoch) || (data.active?.viewId === view.viewId && focusEpoch < (data.active.focusEpoch || 0))) { trace(false, 'stale-focus-epoch'); return { accepted: false, contextProtocol: 2 }; }
+    if (previous && contextSeq <= previous.contextSeq) { trace(false, 'stale-sequence'); return reply(false); }
+    if ((previous && focusEpoch < previous.focusEpoch) || (data.active?.viewId === view.viewId && focusEpoch < (data.active.focusEpoch || 0))) { trace(false, 'stale-focus-epoch'); return reply(false); }
     view.focusedAt = focusEpoch;
     views.set(view.viewId, view);
     // A Codex tool chooses a source, not OS focus. Keep the last Harness epoch
@@ -201,7 +209,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
       changed();
       if (switched || newFocus || (!refreshPromise && !previous)) void refresh({ afterCurrent: newFocus && !switched });
     } else trace(true, 'background-view');
-    return { accepted: true, contextProtocol: 2 };
+    return reply(true);
   }
   function codexClient(v) {
     if (!object(v) || typeof v.clientId !== 'string' || !CLIENT_ID.test(v.clientId)) throw fail('INVALID_ARGUMENT', 'Codex 客户端标识无效');
@@ -352,7 +360,12 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     if (v.ok) n.resolve({ ok: true }); else n.reject(fail(typeof v.code === 'string' ? v.code.slice(0, 100) : 'SOURCE_UNAVAILABLE', typeof v.message === 'string' ? v.message.slice(0, 500) : '未能定位原文；收藏内容仍保留'));
     return { accepted: true };
   }
-  function connectionStatus(){const live=[...views.values()].filter(liveView), codexConnected=[...codexClients.keys()].some(liveCodexClient), activeCodex=data.active?.provider==='codex';return {protocol:1,connected:live.length>0,hostVersion:live[0]?.version||null,codex:{connected:codexConnected,active:activeCodex&&liveCodexClient(data.active.clientId),sessionId:activeCodex?data.active.sessionId:null}};}
+  function connectionStatus(){
+    const live=[...views.values()].filter(liveView),latest=live[0]||[...views.values()].filter(v=>now()-v.seenAt<10000).sort((a,b)=>b.focusEpoch-a.focusEpoch||b.seenAt-a.seenAt)[0];
+    const codexConnected=[...codexClients.keys()].some(liveCodexClient),activeCodex=data.active?.provider==='codex';
+    const compatibility=latest?{protocol:1,state:latest.compatibility?.state||(compatibleHarnessView(latest)?'ready':'checking'),version:latest.version,verified:isVerifiedHarnessVersion(latest.version),...(latest.compatibility?.message?{message:latest.compatibility.message}:{})}:null;
+    return {protocol:1,connected:live.length>0,hostVersion:latest?.version||null,...(compatibility?{compatibility}:{}),codex:{connected:codexConnected,active:activeCodex&&liveCodexClient(data.active.clientId),sessionId:activeCodex?data.active.sessionId:null}};
+  }
   async function close() {
     closed = true;
     for (const n of navigations.values()) { clearTimeout(n.timeout); n.reject(fail('CLOSED', '浮窗已退出')); }

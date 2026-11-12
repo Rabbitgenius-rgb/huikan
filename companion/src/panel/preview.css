@@ -40,7 +40,7 @@ h1 { font-size: 15px; font-weight: 600; line-height: 1.4; margin: 0; overflow-wr
 .item-action { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 7px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 12px; cursor: default; transition: background-color .12s, color .12s }
 .item-action:hover { background: var(--hover); color: var(--fg) }
 .pin-button { cursor: grab }
-.is-pinned .pin-button { cursor: default; color: var(--accent) }
+.is-pinned .pin-button { cursor: default; color: var(--fg) }
 .topic-excerpt.dragging .pin-button { cursor: grabbing }
 
 button:focus-visible, .topic-excerpt:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 6px }

@@ -53,10 +53,11 @@ test('incomplete installations and symlink app folders are rejected before proce
   assert.equal(await inspectHarness(ROOT, windows({ fsApi: { async lstat() { return { isDirectory: () => true, isSymbolicLink: () => true }; } } })), null);
 });
 
-test('known but unsupported versions remain identifiable and uncertain running state fails closed', async () => {
+test('unverified versions remain eligible for capability checks and uncertain running state fails closed', async () => {
   const future = await inspectHarness(ROOT, windows({ readAsar: async () => ({ manifest: { ...identity, version: '0.3.0' }, cliPresent: true }) }));
   assert.equal(future.installed, true);
-  assert.equal(future.supported, false);
+  assert.equal(future.supported, true);
+  assert.equal(future.verified, false);
   for (const running of [true, null]) {
     const found = await inspectHarness(ROOT, windows({ readRunning: async () => running }));
     assert.equal(found.running, true);

@@ -84,7 +84,11 @@
   document.addEventListener('keydown', event => { if (event.key === 'Escape') { releaseDrag(); api.previewHide(); } });
   api.onPreview(payload => {
     if (!payload?.topic || !Array.isArray(payload.items)) return;
-    const keep = sameContext(payload), scroll = keep ? root.querySelector('.topic-items')?.scrollTop || 0 : 0, focused = keep ? document.activeElement?.closest?.('.topic-excerpt')?.dataset.id : null;
+    const keep = sameContext(payload), scroll = keep ? root.querySelector('.topic-items')?.scrollTop || 0 : 0;
+    const focused = keep && document.hasFocus() ? document.activeElement : null;
+    const focusedId = focused?.closest?.('.topic-excerpt')?.dataset.id;
+    const focusedControl = ['pin-button', 'reveal-button'].find(name => focused?.classList.contains(name));
+    const closeFocused = focused?.classList.contains('close-button');
     if (drag) { if (keep) return; releaseDrag(); }
     current = payload; pinned = new Set(payload.pinned || []); window.applyFloatAppearance(payload.settings); root.replaceChildren();
     const inbox = payload.topic.id === 'unclassified';
@@ -98,7 +102,13 @@
     feedback = make('div', 'topic-feedback', hintSeen() ? '' : HINT); feedback.setAttribute('role', 'status');
     root.append(heading); if (payload.topic.brief && !inbox) root.append(make('p', 'topic-brief', payload.topic.brief)); root.append(list, feedback);
     syncPinned(); list.scrollTop = scroll;
-    if (focused) [...list.querySelectorAll('.topic-excerpt')].find(row => row.dataset.id === focused)?.focus({ preventScroll: true });
+    // Keep the exact action: moving a button's focus to its row changes Enter's meaning.
+    if (closeFocused) close.focus({ preventScroll: true });
+    else if (focusedId) {
+      const row = [...list.querySelectorAll('.topic-excerpt')].find(row => row.dataset.id === focusedId);
+      const target = focusedControl ? row?.querySelector(`.${focusedControl}`) : row;
+      target?.focus({ preventScroll: true });
+    }
     api.previewReady(payload.request, 400);
   });
   api.onPinnedChange(ids => { pinned = new Set(ids); syncPinned(); });

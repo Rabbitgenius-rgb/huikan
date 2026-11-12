@@ -38,7 +38,7 @@ svg { display: block; flex: none }
 .inbox.has-topics { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line) }
 .topic-row.is-inbox .topic-symbol { color: var(--muted); background: transparent; border: 1px dashed color-mix(in srgb, var(--fg) 28%, transparent) }
 .inbox-action { display: flex; align-items: center; gap: 8px; padding: 6px 8px 2px 48px }
-.organize-button { flex: none; height: 24px; padding: 0 10px; border: 0; border-radius: 6px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-size: 12px; font-weight: 500; cursor: default }
+.organize-button { flex: none; height: 24px; padding: 0 10px; border: 0; border-radius: 6px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--fg); font-size: 12px; font-weight: 500; cursor: default }
 .organize-button:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 22%, transparent) }
 .organize-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px }
 .inbox-note { font-size: 11px; line-height: 1.4; color: var(--muted) }
@@ -47,7 +47,7 @@ svg { display: block; flex: none }
 .pending-label, .pending-error { font-size: 12px; color: var(--muted); line-height: 1.5 }
 .pending-title { font-size: 13px; padding: 4px 0 6px }
 .pending-error { color: #b4532a }
-.inline-button { padding: 0; background: none; border: 0; color: var(--accent); font-size: 12px; cursor: default }
+.inline-button { padding: 0; background: none; border: 0; color: var(--fg); font-size: 12px; cursor: default }
 .inline-button:hover:not(:disabled) { text-decoration: underline }
 
 .empty-state { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 18px 8px; color: var(--muted) }
