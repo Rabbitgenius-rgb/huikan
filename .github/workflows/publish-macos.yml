@@ -70,7 +70,9 @@ jobs:
               info = plistlib.loads(bundle.read(plists[0]))
               assert info['CFBundleIdentifier'] == 'io.huikan.desktop'
               assert info['CFBundleShortVersionString'] == version
-              assert prefix + 'Contents/Resources/app/codex-mcp.cjs' in bundle.namelist()
+              assert prefix + 'Contents/Resources/app/codex-mcp.cjs' not in bundle.namelist()
+              profile = json.loads(bundle.read(prefix + 'Contents/Resources/app/package.json'))['huikanIntegrations']
+              assert profile == {'harness': True, 'codex': False}
               assert not any(part in {'.local', 'candidate-config.json', 'recall-state.json', '.env'} for name in bundle.namelist() for part in pathlib.PurePosixPath(name).parts)
           release = json.loads(subprocess.check_output(['gh', 'release', 'view', tag, '--json', 'isDraft,targetCommitish,assets'], text=True))
           assert not release['isDraft'] and release['targetCommitish'] == revision

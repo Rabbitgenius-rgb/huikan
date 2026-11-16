@@ -2,6 +2,7 @@
 const {randomUUID}=require('node:crypto');
 const {startPrivateServer}=require('../shared/private-rpc.cjs');
 const {trustedFrame}=require('./security.cjs');
+const {codexEnabled}=require('../shared/integrations.cjs');
 const failure=(code,message)=>Object.assign(new Error(message),{code});
 
 // Only the main frame of the current native window can mark a workspace ready
@@ -71,6 +72,7 @@ async function startRecallBridge({directory,ipcMain,getWindow,getWorkspaceId,isQ
   try {
     const handlers=Object.fromEntries(['capture','list','get','setReview'].map(method=>[method,async raw=>{
       const params=normalizeRecallParams(method,raw);
+      if(method==='capture'&&!codexEnabled&&params.externalSource.provider==='codex')throw failure('INTEGRATION_DISABLED','Codex 接入已隔离，当前版本专注 DeepSeek Harness。');
       // The owning renderer recomputes the canonical payload hash before
       // committing the receipt in its IndexedDB transaction.
       return track(dispatcher.call(method,params));

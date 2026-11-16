@@ -17,6 +17,7 @@ function mainFixture() {
         app: { setName() {}, setPath() {}, on() {}, quit() {}, requestSingleInstanceLock: () => false } };
       if (name === './state') return { state };
       if (name === './recall-service.cjs') return recall;
+      if (name === '../../shared/integrations.cjs') return {codexEnabled:true};
       if (name === './window-diagnostics.cjs') return { createWindowDiagnostics: () => ({}) };
       if (name === './transport') return { callPrivate: async value => { generated.push(value); return { topics: [] }; } };
       if (name.startsWith('.')) return {};

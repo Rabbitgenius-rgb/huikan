@@ -10,7 +10,7 @@ const net = require('node:net');
 const assert = require('node:assert/strict');
 const {spawn, execFile} = require('node:child_process');
 const {promisify} = require('node:util');
-const {createInterface} = require('node:readline');
+const crypto = require('node:crypto');
 const {callPrivate} = require('../shared/private-rpc.cjs');
 const runFile = promisify(execFile);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -109,12 +109,12 @@ async function main() {
   const directory = path.join(base, 'bridge');
   const env = {...process.env, HUIKAN_DATA_HOME:path.join(base, 'desktop'), HUIKAN_COMPANION_HOME:path.join(base, 'companion'),
     MENGCANG_RECALL_USER_DATA:path.join(base, 'companion'), MENGCANG_RECALL_BRIDGE_DIR:directory,
-    HUIKAN_DISCOVERY_FILE:path.join(base, 'discovery', 'connection.json'), CODEX_HOME:path.join(base, 'codex'), DSH_HOME:path.join(base, 'harness')};
+    HUIKAN_DISCOVERY_FILE:path.join(base, 'discovery', 'connection.json'), DSH_HOME:path.join(base, 'harness')};
   for (const key of Object.keys(env)) if (['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'MENGCANG_RECALL_NATIVE_UI', 'MENGCANG_RECALL_DIAGNOSTICS'].includes(key) || /(?:^|_)(?:API_KEY|TOKEN|SECRET|PASSWORD)$/.test(key)) delete env[key];
-  const local = (service, method, params = {}) => callPrivate({directory, service, method, params, timeoutMs:2500});
-  let workbench, parent, companion, mcp, mcpLines, mcpId = 0, childPid = null;
-  const pending = new Map(), childExits = [], sessions = [];
-  let forcedCleanup = false, invalidMcpOutput = false;
+  const local = (service, method, params = {}, timeoutMs = 2500) => callPrivate({directory, service, method, params, timeoutMs});
+  let workbench, parent, companion, childPid = null;
+  const childExits = [], sessions = [];
+  let forcedCleanup = false;
   const watchdog = setTimeout(() => { console.error('Windows tray verification exceeded its deadline.'); process.exitCode = 1; if (workbench && !exited(workbench)) void runFile('taskkill.exe', ['/PID', String(workbench.pid), '/T', '/F'], {windowsHide:true}).finally(() => process.exit(1)); else process.exit(1); }, 240000); watchdog.unref();
   function monitorOutput(child) {
     let remainder = '';
@@ -179,33 +179,6 @@ async function main() {
       fixture.show();fixture.focus();return hwnd(fixture);
     `));
   }
-  async function startMcp() {
-    const entry = path.join(path.dirname(executable), 'resources', 'app', 'codex-mcp.cjs'); await fs.access(entry);
-    mcp = spawn(executable, [entry], {env:{...env,ELECTRON_RUN_AS_NODE:'1'}, stdio:['pipe','pipe','ignore']});
-    mcp.once('error', error => { for (const entry of pending.values()) entry.reject(error); });
-    mcpLines = createInterface({input:mcp.stdout});
-    mcpLines.on('line', line => {
-      let value; try { value = JSON.parse(line); } catch { invalidMcpOutput = true; return; }
-      const entry = pending.get(value.id); if (!entry) return;
-      clearTimeout(entry.timer); pending.delete(value.id); value.error ? entry.reject(Error(value.error.message)) : entry.resolve(value.result);
-    });
-    const initialized = await mcpRequest('initialize', {protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'huikan-windows-tray-smoke',version:'1.0.0'}});
-    assert.equal(initialized.serverInfo.name, 'huikan-codex');
-    mcp.stdin.write(JSON.stringify({jsonrpc:'2.0',method:'notifications/initialized'})+'\n');
-  }
-  function mcpRequest(method, params) {
-    const id = ++mcpId;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { pending.delete(id); reject(Error(`Installed MCP request timed out: ${method}`)); }, 30000);
-      pending.set(id, {resolve,reject,timer}); mcp.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method,params})+'\n');
-    });
-  }
-  const mcpTool = async (name, args = {}) => (await mcpRequest('tools/call', {name,arguments:args})).structuredContent;
-  async function stopMcp() {
-    if (!mcp || exited(mcp)) return;
-    mcp.stdin.end(); await until(() => exited(mcp), 10000, 'Installed MCP did not stop after stdin closed.');
-    assert.equal(mcp.exitCode, 0); mcpLines?.close(); mcp = null;
-  }
   async function quitThroughTray() {
     const pid = childPid;
     await menuAction('退出回看', null, true);
@@ -218,7 +191,7 @@ async function main() {
     assert.equal(child.code, 0); assert.equal(child.signal, null);
     await until(async () => { try { await local('sticky', 'connectionStatus'); return false; } catch { return true; } }, 6000, 'Companion bridge stayed active after Tray Exit.');
   }
-  const threadId = '10000000-0000-4000-8000-000000000031';
+  const instanceId = 'tray-harness-smoke', sessionId = 'isolated-background-save';
   const original = '这段原文在工作台隐藏到托盘后保存。\n\n```js\nconst background = true;\n```\n\n退出并重启后仍应逐字保留。';
   try {
     await launch();
@@ -234,17 +207,14 @@ async function main() {
     await trayClick(); const escapeTarget = await waitPanel(true, initial.id);
     await sendNativeKeys(escapeTarget.handle, [0x1B]); await waitPanel(false, initial.id);
 
-    await startMcp();
-    const capture = {threadId,threadTitle:'Windows 托盘 · 独立合成检查',title:'后台保存检查',topic:'托盘常驻',text:original};
-    let saved = await mcpTool('save_excerpt', capture);
-    if (saved?.status === 'pending' && ['SERVICE_UNAVAILABLE','LIBRARY_NOT_READY','RECALL_TIMEOUT','CODEX_UNAVAILABLE','ETIMEDOUT','ECONNRESET','EPIPE'].includes(saved.error?.code)) {
-      await sleep(1000); saved = await mcpTool('save_excerpt', {...capture,requestId:saved.requestId});
-    }
-    assert.equal(saved.status, 'saved', `Hidden workbench save was not confirmed: ${saved.error?.code || 'UNKNOWN'}`);
-    assert.equal(saved.item.text, original); assert.equal(saved.item.manualTopic, '托盘常驻');
-    assert.equal((await mcpTool('list_recalls', {threadId})).items[0].text, original);
-    assert.equal(await parent.evaluate(parentExpression('return workbench.isVisible();')), false);
-    await stopMcp();
+    await local('sticky','publishContext',{viewId:'tray-harness-view',instanceId,sessionId,sessionTitle:'Windows 托盘 · 独立合成检查',focused:true,supported:true,version:'0.2.1-rc.3',contextSeq:1,focusEpoch:Date.now()});
+    const capture = {requestId:crypto.randomUUID(),title:'后台保存检查',manualTopic:'托盘常驻',text:original,externalSource:{version:1,provider:'deepseek-harness',instanceId,sessionId,sessionTitle:'Windows 托盘 · 独立合成检查',messageId:'background-save',eventSeq:1,turn:1}};
+    let saved = await local('sticky','capture',capture,30000);
+    if(saved?.status==='pending'){await sleep(1000);saved=await local('sticky','capture',capture,30000);}
+    assert.equal(saved.status,'saved',`Hidden workbench save was not confirmed: ${saved.error?.code||'UNKNOWN'}`);
+    assert.equal(saved.item.text,original);assert.equal(saved.item.manualTopic,'托盘常驻');
+    assert.equal((await local('mengcang','list',{instanceId,sessionId},10000)).items[0].text,original);
+    assert.equal(await parent.evaluate(parentExpression('return workbench.isVisible();')),false);
 
     await menuAction('打开回看工作台');
     await until(() => parent.evaluate(parentExpression('return workbench.isVisible() && !workbench.isMinimized();')), 6000, 'Tray menu did not restore the actual workbench.');
@@ -260,19 +230,16 @@ async function main() {
     assert.equal(await companion.evaluate(companionExpression("return globalShortcut.isRegistered('Control+Alt+K') && !globalShortcut.isRegistered('Control+Shift+K');")), true);
     await closeWorkbench();
     await sendNativeKeys(await keyboardBackdrop(), [0x11,0x12,0x4B]); await waitPanel(true);
-    await startMcp(); const restored = await mcpTool('list_recalls', {threadId});
-    assert.equal(restored.items.length, 1); assert.equal(restored.items[0].text, original); await stopMcp();
-    await quitThroughTray(); assert.equal(invalidMcpOutput, false);
+    const restored = await local('mengcang','list',{instanceId,sessionId},10000);
+    assert.equal(restored.items.length, 1); assert.equal(restored.items[0].text, original);
+    await quitThroughTray();
     console.log(JSON.stringify({installedParentAndCompanion:true,workbenchCloseKeepsBackground:true,hiddenLibraryRemainsReady:true,
       trayClickCallbackOpensPanel:true,physicalTrayPointerHitTested:false,nativeWindowsShortcutOpensAndHides:true,
-      panelCloseAndAltF4Hide:true,escapeHidesPanel:true,trayMenuRestoresWorkbench:true,hiddenMcpSave:true,
+      panelCloseAndAltF4Hide:true,escapeHidesPanel:true,trayMenuRestoresWorkbench:true,hiddenHarnessBridgeSave:true,
       shortcutSelectionAndRestart:true,excerptRestoredAfterRestart:true,trayExitSavesAndStopsBothProcesses:true,
       normalSessions:sessions.length,forcedCleanup:false,syntheticDataOnly:true,modelRequestMade:false}));
   } finally {
-    for (const entry of pending.values()) { clearTimeout(entry.timer); entry.reject(Error('Windows tray smoke closed.')); } pending.clear();
-    mcpLines?.close();
     await companion?.close().catch(() => {}); await parent?.close().catch(() => {});
-    if (mcp && !exited(mcp)) { forcedCleanup = true; mcp.kill('SIGKILL'); await until(() => exited(mcp), 5000, 'Owned MCP could not stop.').catch(() => {}); }
     if (workbench && !exited(workbench)) {
       forcedCleanup = true;
       await runFile('taskkill.exe', ['/PID',String(workbench.pid),'/T','/F'], {windowsHide:true,timeout:15000,maxBuffer:64*1024}).catch(() => {});

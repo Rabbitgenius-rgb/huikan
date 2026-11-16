@@ -3,6 +3,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { EventEmitter } = require('node:events');
+const { codexEnabled: defaultCodexEnabled } = require('../../shared/integrations.cjs');
 
 const VERSION = '0.2.0-rc.2';
 const { VERIFIED_HARNESS_VERSIONS, isVerifiedHarnessVersion, compatibleHarnessView } = require('../../shared/harness-compatibility.cjs');
@@ -67,7 +68,7 @@ const keyOf = s => s ? `${s.instanceId}\0${s.sessionId}` : '';
 const errorOf = e => ({ code: typeof e?.code === 'string' ? e.code : 'UNAVAILABLE', message: typeof e?.message === 'string' ? e.message.slice(0, 500) : '连接暂不可用，请重试' });
 
 /** Owns only recoverable delivery state, a discardable library cache, and window preferences. */
-async function createRecallService({ userData, callDream, now = Date.now, navigationTimeoutMs = 12000, onContext = () => {} }) {
+async function createRecallService({ userData, callDream, now = Date.now, navigationTimeoutMs = 12000, onContext = () => {}, codexEnabled = defaultCodexEnabled }) {
   if (!path.isAbsolute(userData) || typeof callDream !== 'function') throw Error('Invalid recall service configuration');
   await fs.mkdir(userData, { recursive: true, mode: 0o700 });
   const file = path.join(userData, 'recall-state.json');
@@ -119,7 +120,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     return typeof title === 'string' ? { ...item, manualTopic: title } : item;
   }
   function snapshot() {
-    const active = data.active;
+    const active = !codexEnabled && data.active?.provider === 'codex' ? null : data.active;
     const sourceKey = keyOf(active);
     const items = Object.values(data.cache).filter(item => keyOf(item.externalSource) === sourceKey).map(withTopic).sort((a, b) => a.externalSource.eventSeq - b.externalSource.eventSeq || (a.externalSource.selection?.start ?? 0) - (b.externalSource.selection?.start ?? 0) || a.savedAt.localeCompare(b.savedAt));
     const pending = Object.values(data.outbox).filter(p => keyOf(p.capture.externalSource) === sourceKey).map(p => ({ requestId: p.capture.requestId, title: p.capture.title, text: p.capture.text, externalSource: p.capture.externalSource, error: p.error || null, saving: inFlight.has(p.capture.requestId) }));
@@ -129,7 +130,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
   }
   const changed = () => events.emit('change', snapshot());
   async function refresh({ afterCurrent = false } = {}) {
-    const active = data.active;
+    const active = !codexEnabled && data.active?.provider === 'codex' ? null : data.active;
     // Pinned windows remain visible across thread switches. Reconcile their
     // source lists too, including when Harness has no active conversation.
     const sources = new Map();
@@ -248,6 +249,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     return { accepted: true, provider: 'codex' };
   }
   async function deliver(capture) {
+    if(!codexEnabled&&capture.externalSource.provider==='codex')throw fail('INTEGRATION_DISABLED','Codex 接入已隔离，当前版本专注 DeepSeek Harness；原有摘录仍保留。');
     const id = capture.requestId, hash = digest(capture);
     // Topic grouping belongs to this companion, alongside its AI topic cache.
     // The existing library capture transaction still receives its canonical fields.
@@ -364,14 +366,14 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     const live=[...views.values()].filter(liveView),latest=live[0]||[...views.values()].filter(v=>now()-v.seenAt<10000).sort((a,b)=>b.focusEpoch-a.focusEpoch||b.seenAt-a.seenAt)[0];
     const codexConnected=[...codexClients.keys()].some(liveCodexClient),activeCodex=data.active?.provider==='codex';
     const compatibility=latest?{protocol:1,state:latest.compatibility?.state||(compatibleHarnessView(latest)?'ready':'checking'),version:latest.version,verified:isVerifiedHarnessVersion(latest.version),...(latest.compatibility?.message?{message:latest.compatibility.message}:{})}:null;
-    return {protocol:1,connected:live.length>0,hostVersion:latest?.version||null,...(compatibility?{compatibility}:{}),codex:{connected:codexConnected,active:activeCodex&&liveCodexClient(data.active.clientId),sessionId:activeCodex?data.active.sessionId:null}};
+    return {protocol:1,connected:live.length>0,hostVersion:latest?.version||null,...(compatibility?{compatibility}:{}),...(codexEnabled?{codex:{connected:codexConnected,active:activeCodex&&liveCodexClient(data.active.clientId),sessionId:activeCodex?data.active.sessionId:null}}:{})};
   }
   async function close() {
     closed = true;
     for (const n of navigations.values()) { clearTimeout(n.timeout); n.reject(fail('CLOSED', '浮窗已退出')); }
     navigations.clear(); await Promise.allSettled([...inFlight.values()]); await writes;
   }
-  return { events, handlers: { publishContext, codexHeartbeat, codexContext, capture, pollCommands, navigationResult, connectionStatus }, snapshot, refresh, retry, getItem, markRead, setReview, setPin, setMode, requestNavigation, pinnedLayouts: () => structuredClone(data.pinned), close };
+  return { events, handlers: { publishContext, ...(codexEnabled?{codexHeartbeat,codexContext}:{}), capture, pollCommands, navigationResult, connectionStatus }, snapshot, refresh, retry, getItem, markRead, setReview, setPin, setMode, requestNavigation, pinnedLayouts: () => structuredClone(data.pinned), close };
 }
 
 module.exports = { createRecallService, captureOf, sourceOf, itemOf, codexThreadId, VERSION, SUPPORTED_VERSIONS };
