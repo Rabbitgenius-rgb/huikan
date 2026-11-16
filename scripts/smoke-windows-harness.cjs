@@ -151,6 +151,7 @@ async function main(){
   const saved=await hostRpc(harnessPage,'capture',capture);assert.equal(saved.status,'saved');assert.equal(saved.item.text,text);
   const repeated=await hostRpc(harnessPage,'capture',capture);assert.equal(repeated.item.id,saved.item.id);
   const stored=await rpc('mengcang','list',{instanceId:identity.instanceId,sessionId:capture.externalSource.sessionId});assert.equal(stored.items.length,1);assert.equal(stored.items[0].text,text);
+  if(require('../shared/integrations.cjs').codexEnabled){
   setStage('cross-provider canonical source');
   const clientId=crypto.randomUUID(),codexInstance='codex:'+crypto.randomBytes(12).toString('hex'),codexThread=crypto.randomUUID();
   await rpc('sticky','codexHeartbeat',{clientId});
@@ -163,9 +164,10 @@ async function main(){
   const reverseRequest=crypto.randomUUID();
   const reverse=await rpc('sticky','capture',{...codexCapture,requestId:reverseRequest,text,externalSource:{...codexCapture.externalSource,messageId:'capture-'+reverseRequest}});
   assert.equal(reverse.status,'saved');assert.equal(reverse.item.id,saved.item.id);assert.equal(reverse.item.externalSource.provider,'deepseek-harness');
+  }
   setStage('normal application shutdown');await gracefulStop(harness);harness=null;await gracefulStop(huikan);huikan=null;
   await until(async()=>{try{await rpc('sticky','connectionStatus');return false;}catch(error){return error.code==='SERVICE_UNAVAILABLE';}},15000,'Owned companion remained active after normal workbench quit.');
-  result={officialHarnessInitialized:true,validatedHarnessDetection:true,unselectedRegistryDiscovery:true,automaticPluginInstallation:true,unrelatedProfileMetadataPreserved:true,installationRetryIdempotent:true,realHarnessClientHeartbeat:true,pluginDiscoveredBridge:true,installedHostSyntheticCaptureSaved:true,captureRetryDidNotDuplicate:true,crossProviderDedupPreservesSource:true,normalApplicationQuit:true,modelRequestMade:false,actualConversationUiCaptureTested:false};
+  result={officialHarnessInitialized:true,validatedHarnessDetection:true,unselectedRegistryDiscovery:true,automaticPluginInstallation:true,unrelatedProfileMetadataPreserved:true,installationRetryIdempotent:true,realHarnessClientHeartbeat:true,pluginDiscoveredBridge:true,installedHostSyntheticCaptureSaved:true,captureRetryDidNotDuplicate:true,crossProviderDedupPreservesSource:require('../shared/integrations.cjs').codexEnabled,normalApplicationQuit:true,modelRequestMade:false,actualConversationUiCaptureTested:false};
  }catch(error){throw Error(`Windows Harness integration failed during ${stage}: ${error.message}`);}
  finally{
   for(const item of [...owned].reverse())await forceCleanup(item);

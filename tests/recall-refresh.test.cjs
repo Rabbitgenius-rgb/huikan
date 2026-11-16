@@ -3,11 +3,11 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
 const {createRecallService}=require('../companion/src/recall-service.cjs');
 
-async function fixture(t){
+async function fixture(t,options={}){
  const base=await fs.mkdtemp(path.join(os.tmpdir(),'huikan-refresh-')),directory=path.join(base,'state');
  const source={version:1,provider:'deepseek-harness',instanceId:'isolated',sessionId:'review',messageId:'message',eventSeq:1,turn:1,sessionTitle:'合成线程'};
  let items=[{id:'synthetic-item',title:'测试摘录',text:'原文保持不变',savedAt:'2026-11-11T00:00:00.000Z',due:true,externalSource:source}],calls=0,readHook;
- const service=await createRecallService({userData:directory,callDream:async(method)=>{assert.equal(method,'list');calls++;const snapshot=structuredClone(items);await readHook?.();return {workspaceId:'isolated',revision:1,items:snapshot};}});
+ const service=await createRecallService({...options,userData:directory,callDream:async(method)=>{assert.equal(method,'list');calls++;const snapshot=structuredClone(items);await readHook?.();return {workspaceId:'isolated',revision:1,items:snapshot};}});
  t.after(async()=>{await service.close();await fs.rm(base,{recursive:true,force:true});});
  const context={viewId:'view',instanceId:'isolated',sessionId:'review',sessionTitle:'合成线程',focused:true,supported:true,version:'0.2.1-rc.3',contextSeq:1,focusEpoch:Date.now()};
  await service.handlers.publishContext(context);
@@ -104,7 +104,7 @@ test('a title update keeps a valid in-flight result and unchanged heartbeats do 
 });
 
 test('an explicit Codex selection of the same thread refreshes after an older read',async t=>{
- const f=await fixture(t),clientId=require('node:crypto').randomUUID();
+ const f=await fixture(t,{codexEnabled:true}),clientId=require('node:crypto').randomUUID();
  const context={clientId,instanceId:`codex:${'a'.repeat(24)}`,sessionId:'thr_refresh-test',sessionTitle:'Codex 合成线程'};
  f.items=[{...f.items[0],externalSource:{version:1,provider:'codex',instanceId:context.instanceId,sessionId:context.sessionId,sessionTitle:context.sessionTitle,messageId:`capture-${require('node:crypto').randomUUID()}`,eventSeq:0,turn:0}}];
  f.service.handlers.codexHeartbeat({clientId});await f.service.handlers.codexContext(context);

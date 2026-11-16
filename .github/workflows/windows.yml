@@ -52,9 +52,6 @@ jobs:
       - name: Launch, save, and restore in the installed application
         shell: pwsh
         run: node scripts/smoke-packaged.cjs "$env:HUIKAN_INSTALLED_EXE"
-      - name: Verify installed Codex MCP capture and setup
-        shell: pwsh
-        run: node scripts/smoke-codex.cjs "$env:HUIKAN_INSTALLED_EXE"
       - name: Verify installed Windows tray and background lifecycle
         shell: pwsh
         run: node scripts/smoke-windows-tray.cjs "$env:HUIKAN_INSTALLED_EXE"

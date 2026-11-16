@@ -1,0 +1,11 @@
+import {readdirSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+const root=fileURLToPath(new URL('../',import.meta.url));
+const args=process.argv.slice(2);
+if(args.some(arg=>arg!=='--codex'))throw Error('支持的参数：--codex');
+const codex=args.includes('--codex');
+const files=readdirSync(new URL('../tests/',import.meta.url)).filter(name=>/\.test\.(?:cjs|mjs)$/.test(name)&&name.startsWith('codex-')===codex).sort().map(name=>'tests/'+name);
+const result=spawnSync(process.execPath,['--test',...files],{cwd:root,stdio:'inherit',env:{...process.env,HUIKAN_ENABLE_CODEX:codex?'1':'0'}});
+if(result.error)throw result.error;
+process.exitCode=result.status??1;

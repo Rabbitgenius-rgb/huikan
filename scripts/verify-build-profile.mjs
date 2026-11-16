@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import vm from 'node:vm';
+import {createRequire} from 'node:module';
+import {fileURLToPath} from 'node:url';
+
+const root=fileURLToPath(new URL('../',import.meta.url));
+const directory=path.join(root,'desktop/build');
+const manifest=JSON.parse(await fs.readFile(path.join(directory,'package.json'),'utf8'));
+const enabled=manifest.huikanIntegrations.codex;
+assert.deepEqual(manifest.huikanIntegrations,{harness:true,codex:process.env.HUIKAN_ENABLE_CODEX==='1'});
+const hasMcp=await fs.access(path.join(directory,'codex-mcp.cjs')).then(()=>true,()=>false);
+assert.equal(hasMcp,enabled,'the packaged MCP entry must match the selected integration profile');
+assert.equal(createRequire(import.meta.url)(path.join(directory,'shared/integrations.cjs')).codexEnabled,enabled);
+const main=await fs.readFile(path.join(directory,'workbench.cjs'),'utf8');
+assert.equal(main.includes('# BEGIN HUIKAN CODEX MCP v1'),enabled,'Codex setup code must be absent from the default bundle');
+let api;
+vm.runInNewContext(await fs.readFile(path.join(directory,'preload.cjs'),'utf8'),{require:name=>{assert.equal(name,'electron');return {contextBridge:{exposeInMainWorld(_name,value){api=value;}},ipcRenderer:{invoke(){},on(){},removeListener(){}}};}});
+assert.equal(typeof api.connectionInstall,'function');
+assert.equal(typeof api.codexInstall==='function',enabled);
+assert.equal(typeof api.codexStatus==='function',enabled);
+console.log(enabled?'暂存 Codex 构建检查通过。':'Harness 专注构建检查通过：Codex MCP、配置安装代码与预加载接口均已隔离。');

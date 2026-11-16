@@ -3,6 +3,7 @@ const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen, globalShor
 const path = require('path');
 const os = require('os');
 const { createRecallService } = require('./recall-service.cjs');
+const { codexEnabled } = require('../../shared/integrations.cjs');
 const { panelPosition } = require('./panel-position.cjs');
 const { glassWindowOptions, attachGlassMaterial } = require('./window-material.cjs');
 const { startPrivateServer, callPrivate } = require('./transport');
@@ -277,6 +278,7 @@ async function revealItem(id) {
   const item = state.service.getItem(id);
   if (!item) throw Error('找不到回看条目');
   if (item.externalSource.provider === 'codex') {
+    if(!codexEnabled)throw Object.assign(Error('Codex 接入已隔离；原文仍保留在回看中。'),{code:'INTEGRATION_DISABLED'});
     const threadId = require('./recall-service.cjs').codexThreadId(item.externalSource.sessionId);
     await shell.openExternal(`codex://threads/${encodeURIComponent(threadId)}`);
     return { ok: true, target: 'thread', precise: false };
