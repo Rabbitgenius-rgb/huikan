@@ -7,6 +7,7 @@ const { codexEnabled } = require('../../shared/integrations.cjs');
 const { panelPosition } = require('./panel-position.cjs');
 const { glassWindowOptions, attachGlassMaterial } = require('./window-material.cjs');
 const { startPrivateServer, callPrivate } = require('./transport');
+const { activateHarnessWindow } = require('./harness-window.cjs');
 // Preserve the legacy standalone fallback directory when changing the display
 // name. Managed desktop launches already supply their existing absolute path.
 const legacyUserData = () => path.join(app.getPath('appData'), '梦藏回看候选');
@@ -332,7 +333,7 @@ if (primary) app.whenReady().then(async () => {
   ]));
   appearance = await require('./appearance.cjs').createAppearance({userData,onChange:()=>{settings.broadcast(true);publishNative();}});
   settings.setAppearanceProvider(()=>appearance.get());
-  state.service = await createRecallService({ userData, callDream: (method, params) => callPrivate({ directory: bridgeDirectory, service: 'mengcang', method, params, timeoutMs: 15000 }), onContext: diagnostics.context });
+  state.service = await createRecallService({ userData, callDream: (method, params) => callPrivate({ directory: bridgeDirectory, service: 'mengcang', method, params, timeoutMs: 15000 }), onContext: diagnostics.context, activateHarness: process.platform === 'darwin' ? activateHarnessWindow : undefined });
   state.mode = state.service.snapshot().mode;
   topicOrganizer = await createTopicOrganizer({ userData, automatic: Boolean(nativeUIPath),
     generate: generateHarnessTopics,

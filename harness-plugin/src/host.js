@@ -38,7 +38,10 @@ export class RecallBridge extends TypertRemoteService {
   const source=method==='capture'?request.externalSource:request;
   if(source.instanceId && source.instanceId!==this.identity.instanceId)throw new RemoteError('RECALL_INSTANCE','来源实例不匹配。');
   let result;
-  try {result=await rpc.callPrivate({directory:await discovery.resolveBridgeDirectory({config:this.config}),service:'sticky',method,params:request,timeoutMs:method==='capture'?10000:3000});}
+  // The desktop shell is the parent of this Node host. Stamp the PID on the
+  // private bridge here so it cannot be supplied by the renderer.
+  const params=method==='publishContext'&&process.platform==='darwin'?{...request,desktopPid:process.ppid}:request;
+  try {result=await rpc.callPrivate({directory:await discovery.resolveBridgeDirectory({config:this.config}),service:'sticky',method,params,timeoutMs:method==='capture'?10000:3000});}
   catch(error){throw new RemoteError('RECALL_BRIDGE',error.code==='UNAVAILABLE'?'回看浮窗尚未连接。':String(error.message || '本地回看连接失败。').slice(0,300));}
   if(method==='publishContext'&&result?.contextProtocol!==2)throw new RemoteError('RECALL_CONTEXT_PROTOCOL','请同时更新回看插件与浮窗，并重新加载 Harness 页面。');
   return methods[method].output.parse(result);

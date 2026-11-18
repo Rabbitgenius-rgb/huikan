@@ -24,6 +24,37 @@ function nextSnapshot(service,predicate){
  });
 }
 
+test('reopening a stale Harness view targets its own instance before dispatching navigation',async t=>{
+ let now=1000,wake;
+ const activated=new Promise(resolve=>{wake=resolve;});
+ let finishActivation;
+ const f=await fixture(t,{now:()=>now,activateHarness:pid=>{
+  wake(pid);
+  return new Promise(resolve=>{finishActivation=resolve;});
+ }});
+ const target={...f.context,contextSeq:2,desktopPid:201};
+ await f.service.handlers.publishContext(target);
+ now+=11000;
+ const other={...f.context,viewId:'other-view',instanceId:'other-instance',sessionId:'other-session',focusEpoch:f.context.focusEpoch+1,desktopPid:202};
+ const originalItems=f.items;
+ f.items=[];
+ await f.service.handlers.publishContext(other);
+ const pending=f.service.requestNavigation('synthetic-item');
+ assert.equal(await Promise.race([activated,pending]),201);
+ const targetView={viewId:target.viewId,instanceId:target.instanceId};
+ assert.deepEqual(f.service.handlers.pollCommands(targetView).commands,[]);
+ f.items=originalItems;
+ await f.service.handlers.publishContext({...target,contextSeq:3});
+ finishActivation(true);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(f.service.handlers.pollCommands({viewId:other.viewId,instanceId:other.instanceId}).commands,[]);
+ const commands=f.service.handlers.pollCommands(targetView).commands;
+ assert.equal(commands.length,1);
+ assert.equal(commands[0].source.messageId,'message');
+ f.service.handlers.navigationResult({viewId:target.viewId,id:commands[0].id,ok:true});
+ assert.deepEqual(await pending,{ok:true});
+});
+
 test('identical refreshes preserve the durable state file, including after restart',async t=>{
  const f=await fixture(t),before=await fs.stat(f.file),body=await fs.readFile(f.file,'utf8');
  for(let i=0;i<3;i++)await f.service.refresh();

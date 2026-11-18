@@ -1,6 +1,6 @@
 {
   "name": "@mengcang/harness-recall",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "private": false,
   "type": "module",
   "description": "Local manual recall bridge with public API and message structure compatibility checks",
