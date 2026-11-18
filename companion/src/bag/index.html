@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' data:; base-uri 'none'; frame-src 'none'; form-action 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>回看 · 书包便签</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="../shared/render-text.js"></script>
+  <script defer src="../note/whale-video.js"></script>
+  <script defer src="../note/whale-pet.js"></script>
+  <script defer src="player.js"></script>
+  <script defer src="script.js"></script>
+</head>
+<body data-phase="idle">
+  <div id="tags" role="region" aria-label="已贴便签" hidden inert>
+    <div id="notes"></div>
+    <p id="error" role="status" hidden></p>
+  </div>
+  <button type="button" id="pet" aria-label="大肥鱼，打开书包" aria-expanded="false" aria-controls="tags" data-poster="idle">
+    <span id="poster" aria-hidden="true"></span>
+    <canvas id="idle-pet" aria-hidden="true"></canvas>
+    <video playsinline muted disablepictureinpicture disableremoteplayback preload="auto" aria-hidden="true"></video>
+    <video playsinline muted disablepictureinpicture disableremoteplayback preload="auto" aria-hidden="true"></video>
+  </button>
+</body>
+</html>

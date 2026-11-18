@@ -49,6 +49,19 @@ contextBridge.exposeInMainWorld('api', {
   onStickyError: cb => on('sticky:error', cb),
   onStickyState: (cb) => on('sticky:state', cb),
 
+  bagInit: () => ipcRenderer.invoke('bag:init'),
+  bagIdleAssets: () => ipcRenderer.invoke('bag:idle-assets'),
+  bagFrame: expanded => ipcRenderer.invoke('bag:frame', expanded),
+  bagPointer: () => ipcRenderer.invoke('bag:pointer'),
+  bagIgnore: ignore => ipcRenderer.send('bag:ignore', ignore),
+  bagDrag: (action, dx, dy) => ipcRenderer.send('bag:drag', action, dx, dy),
+  bagRead: id => ipcRenderer.invoke('bag:read', id),
+  bagUnpin: id => ipcRenderer.invoke('bag:unpin', id),
+  onBagNotes: cb => on('bag:notes', cb),
+  onBagError: cb => on('bag:error', cb),
+  onBagGeometry: cb => on('bag:geometry', cb),
+  onBagVisible: cb => on('bag:visible', cb),
+
   // shared
   onSettings: (cb) => on('settings', cb),
   onGlassMaterial: (cb) => on('glass:material', cb),

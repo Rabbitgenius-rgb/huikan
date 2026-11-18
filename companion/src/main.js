@@ -11,6 +11,7 @@ const { startPrivateServer, callPrivate } = require('./transport');
 // name. Managed desktop launches already supply their existing absolute path.
 const legacyUserData = () => path.join(app.getPath('appData'), '梦藏回看候选');
 app.setName('回看浮窗');
+const bagPreview = process.env.HUIKAN_BAG_PREVIEW === '1';
 const candidateRoot = path.resolve(__dirname, '../..');
 let candidateConfig = {};
 try { candidateConfig = require('../candidate-config.json'); } catch (error) { if (error.code !== 'MODULE_NOT_FOUND') throw error; }
@@ -26,7 +27,7 @@ if (!primary) app.quit();
 if(process.send){process.on('message',value=>{if(value?.type==='huikan-quit')app.quit();else if(value?.type==='huikan-workbench-hidden')notifyWorkbenchHidden();else if(value?.type==='huikan-library-changed')requestLibraryRefresh();else if(value?.type==='huikan-shortcut-select'&&process.platform==='darwin'&&recallShortcut)void changeRecallShortcut(value.accelerator);});process.once('disconnect',()=>app.quit());}
 const { state, PRELOAD, pinnedIds } = require('./state');
 const settings = require('./settings');
-const stickies = require('./stickies');
+const stickies = require('./sticky-bag.cjs');
 const { stickyItem } = require('./sticky-title.cjs');
 const panelPreview = require('./panel-preview');
 const { createTopicOrganizer } = require('./topic-organizer.cjs');
@@ -308,7 +309,7 @@ async function nativeAction(action) {
   if (['reveal', 'pin', 'tear:start'].includes(name)) {
     if (typeof action.id !== 'string' || !snapshot.items.some(item => item.id === action.id)) throw Error('条目不属于当前对话');
     if (name === 'reveal') return revealItem(action.id);
-    const result = name === 'pin' ? await stickies.pinItem(action.id) : stickies.beginTear(action.id, { x: action.x, y: action.y });
+    const result = name === 'pin' ? await stickies.pinItem(action.id) : await stickies.beginTear(action.id, { x: action.x, y: action.y });
     if (!result.ok) throw Error(result.reason === 'limit' ? '最多同时贴5个便签' : result.reason === 'already-pinned' ? '这段内容已经贴出' : '便签暂未贴出，请重试');
     return result;
   }
@@ -388,12 +389,12 @@ if (primary) app.whenReady().then(async () => {
     return state.service.refresh();
   }));
   ipcMain.handle('recall:reveal', safeReply((event, id) => {
-    const ownSticky = trusted(event, event.sender) && state.byWc.get(event.sender.id)?.id === id;
+    const ownSticky = trusted(event, event.sender) && stickies.ownsItem(event, id);
     if (typeof id !== 'string' || (!trustedPanelSender(event, id) && !ownSticky)) throw Error('此窗口不能定位该条目');
     return revealItem(id);
   }));
   ipcMain.handle('review:set', safeReply((event, id, due) => {
-    const ownSticky = trusted(event, event.sender) && state.byWc.get(event.sender.id)?.id === id;
+    const ownSticky = trusted(event, event.sender) && stickies.ownsItem(event, id);
     if (typeof id !== 'string' || (!(trustedPanelSender(event, id) && event.sender === state.panel.webContents) && !ownSticky)) throw Error('此窗口不能更改该条目');
     return state.service.setReview(id, due);
   }));
@@ -422,12 +423,12 @@ if (primary) app.whenReady().then(async () => {
   if (nativeUIPath) {
     nativeFrontend = launchNativeFrontend({ appPath: nativeUIPath, onAction: nativeAction, onExit: () => { if (!state.quitting) app.quit(); } });
     publishNative();
-  } else if (process.platform === 'win32' || process.platform === 'darwin') {
+  } else if (!bagPreview && (process.platform === 'win32' || process.platform === 'darwin')) {
     const probe = process.platform === 'darwin' ? require('./mac-shortcut-probe.cjs').createMacShortcutProbe({ executable: path.join(candidateRoot, app.isPackaged ? 'mac-shortcut-probe' : 'desktop/build/mac-shortcut-probe') }) : undefined;
     recallShortcut = require('./recall-shortcut.cjs').createRecallShortcut({ directory: userData, globalShortcut, invoke: togglePanel, probe });
     await recallShortcut.start(); updateTrayTooltip();
     if (hiddenHintRequested) notifyWorkbenchHidden();
-  } else globalShortcut.register('CommandOrControl+Shift+K', togglePanel);
+  } else if (!bagPreview) globalShortcut.register('CommandOrControl+Shift+K', togglePanel);
   app.on('second-instance', showPanel);
   if (process.argv.includes('--show-panel')) {
     if (!state.panel.webContents.isLoading()) showPanel();

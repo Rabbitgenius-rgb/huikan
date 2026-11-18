@@ -3,7 +3,7 @@ const { BrowserWindow, screen } = require('electron');
 const path = require('path');
 const { state, PRELOAD, MAX_STICKIES, SIZES, notifyPinned } = require('./state');
 const settings = require('./settings');
-const { loadWhalePetAsset } = require('./whale-pet-asset.cjs');
+const { loadWhalePetAsset, loadWhalePetMotionAsset, loadWhalePetVideos } = require('./whale-pet-asset.cjs');
 const DOCK_GAP = 8, SNAP_DISTANCE = 24;
 let protectWindow = () => {};
 let decorateItem = item => item;
@@ -352,9 +352,9 @@ function wire(ipcMain, options = {}) {
     // A renderer reload must recover the destination rather than its temporary
     // animation viewport, without changing the saved note or its source.
     if (rec.transition) finishMorph(rec, rec.transition.token);
-    const petSource = await loadWhalePetAsset();
+    const [petSource, petMotionSource, petVideos] = await Promise.all([loadWhalePetAsset(), loadWhalePetMotionAsset(), loadWhalePetVideos()]);
     if (rec.win.isDestroyed()) return null;
-    return { item: rec.item, state: rec.state, settings: settings.current(), petSource,
+    return { item: rec.item, state: rec.state, settings: settings.current(), petSource, petMotionSource, petVideos,
       collapsedSize: { width: SIZES.gem.w - 12, height: SIZES.gem.h - 12 } };
   });
 

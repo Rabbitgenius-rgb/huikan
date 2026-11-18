@@ -321,6 +321,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
   }
   async function setPin(id, layout) {
     string(id, 'id');
+    const prior = data.pinned[id];
     if (layout === null) delete data.pinned[id];
     else {
       if (!getItem(id) || !object(layout) || !['note', 'large', 'gem'].includes(layout.state) || !Number.isFinite(layout.x) || !Number.isFinite(layout.y)) throw fail('INVALID_ARGUMENT', '便签布局无效');
@@ -329,7 +330,31 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
       }
       data.pinned[id] = { x: Math.round(layout.x), y: Math.round(layout.y), state: layout.state, ...(layout.dockBelow ? { dockBelow: layout.dockBelow } : {}) };
     }
-    await persist(); changed();
+    const next = data.pinned[id];
+    try { await persist(); }
+    catch (error) {
+      if (data.pinned[id] === next) {
+        if (prior) data.pinned[id] = prior;
+        else delete data.pinned[id];
+      }
+      throw error;
+    }
+    changed();
+  }
+  const validAnchor = value => object(value) && [value.x, value.y].every(n => Number.isFinite(n) && Math.abs(n) < 1e7);
+  const bagAnchor = () => validAnchor(data.bagAnchor) ? {x:data.bagAnchor.x,y:data.bagAnchor.y} : null;
+  async function setBagAnchor(value) {
+    if (!validAnchor(value)) throw fail('INVALID_ARGUMENT', '书包位置无效');
+    const previous = data.bagAnchor;
+    const next = data.bagAnchor = {x:Math.round(value.x),y:Math.round(value.y)};
+    try { await persist(); }
+    catch (error) {
+      if (data.bagAnchor === next) {
+        if (previous === undefined) delete data.bagAnchor;
+        else data.bagAnchor = previous;
+      }
+      throw error;
+    }
   }
   async function setMode(mode) {
     if (!['auto', '2d', '3d'].includes(mode)) throw fail('INVALID_ARGUMENT', '外观模式无效');
@@ -373,7 +398,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     for (const n of navigations.values()) { clearTimeout(n.timeout); n.reject(fail('CLOSED', '浮窗已退出')); }
     navigations.clear(); await Promise.allSettled([...inFlight.values()]); await writes;
   }
-  return { events, handlers: { publishContext, ...(codexEnabled?{codexHeartbeat,codexContext}:{}), capture, pollCommands, navigationResult, connectionStatus }, snapshot, refresh, retry, getItem, markRead, setReview, setPin, setMode, requestNavigation, pinnedLayouts: () => structuredClone(data.pinned), close };
+  return { events, handlers: { publishContext, ...(codexEnabled?{codexHeartbeat,codexContext}:{}), capture, pollCommands, navigationResult, connectionStatus }, snapshot, refresh, retry, getItem, markRead, setReview, setPin, bagAnchor, setBagAnchor, setMode, requestNavigation, pinnedLayouts: () => structuredClone(data.pinned), close };
 }
 
 module.exports = { createRecallService, captureOf, sourceOf, itemOf, codexThreadId, VERSION, SUPPORTED_VERSIONS };
