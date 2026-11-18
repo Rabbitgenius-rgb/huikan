@@ -9,8 +9,8 @@ const { execFile } = require('node:child_process');
 const { VERIFIED_HARNESS_VERSIONS, isHarnessVersion, isVerifiedHarnessVersion } = require('../shared/harness-compatibility.cjs');
 const SUPPORTED = new Set(VERIFIED_HARNESS_VERSIONS);
 const CLI_ENTRY = 'dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js';
-const run = (executable, args) => new Promise((resolve, reject) => {
-  execFile(executable, args, { timeout: 4000, maxBuffer: 64 * 1024, windowsHide: true },
+const run = (executable, args, { maxBuffer = 64 * 1024 } = {}) => new Promise((resolve, reject) => {
+  execFile(executable, args, { timeout: 4000, maxBuffer, windowsHide: true },
     (error, stdout) => error ? reject(error) : resolve(stdout.trim()));
 });
 
@@ -65,7 +65,8 @@ async function readRunning(executable, { platform = process.platform, env = proc
       return output === 'running' ? true : output === 'stopped' ? false : null;
     }
     if (platform === 'darwin') {
-      const output = await execute('/bin/ps', ['-axww', '-o', 'comm=']);
+      // The process table includes full paths to every Electron helper.
+      const output = await execute('/bin/ps', ['-axww', '-o', 'comm='], { maxBuffer: 2 * 1024 * 1024 });
       return output.split(/\r?\n/).some(line => line.trim() === executable);
     }
   } catch { /* Unknown must never mean safely stopped. */ }

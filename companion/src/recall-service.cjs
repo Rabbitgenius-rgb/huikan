@@ -90,6 +90,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
   } catch (e) { if (e.code !== 'ENOENT') throw fail('STATE_READ_FAILED', '回看本地状态无法读取；保留原文件，请检查后重试'); }
   let writes = Promise.resolve(), persistenceError = null, libraryError = null, generation = 0, refreshPromise = null, refreshKey = null, closed = false;
   const views = new Map(), codexClients = new Map(), inFlight = new Map(), navigations = new Map();
+  let viewGeneration = 0;
   const libraryRevisions = new Map();
   function acceptRevision(result) {
     const workspaceId = string(result?.workspaceId, 'workspaceId', 500);
@@ -189,6 +190,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     const trace = (accepted, reason) => { try { onContext({ contextProtocol: 2, viewId: view.viewId, instanceId: view.instanceId, sessionId: view.sessionId, contextSeq, focusEpoch, reportedFocused: view.focused, accepted, reason, activeViewId: data.active?.viewId || '', activeInstanceId: data.active?.instanceId || '', activeSessionId: data.active?.sessionId || '', activeFocusEpoch: data.active?.focusEpoch || 0 }); } catch {} };
     if (previous && contextSeq <= previous.contextSeq) { trace(false, 'stale-sequence'); return reply(false); }
     if ((previous && focusEpoch < previous.focusEpoch) || (data.active?.viewId === view.viewId && focusEpoch < (data.active.focusEpoch || 0))) { trace(false, 'stale-focus-epoch'); return reply(false); }
+    view.generation = previous?.generation ?? ++viewGeneration;
     view.focusedAt = focusEpoch;
     views.set(view.viewId, view);
     // A Codex tool chooses a source, not OS focus. Keep the last Harness epoch
@@ -376,7 +378,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     const commandId = crypto.randomUUID();
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => { navigations.delete(commandId); reject(fail('NAVIGATION_TIMEOUT', '未能确认原文位置，请在 Harness 中检查')); }, navigationTimeoutMs);
-      navigations.set(commandId, { id: commandId, viewId: preferred.viewId, instanceId: preferred.instanceId, source: item.externalSource, delivered: false, resolve, reject, timeout });
+      navigations.set(commandId, { id: commandId, preferredViewId: preferred.viewId, instanceId: preferred.instanceId, source: item.externalSource, recipientViewId: null, resolve, reject, timeout });
     });
   }
   function pollCommands(v) {
@@ -384,22 +386,29 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     const viewId = string(v.viewId, 'viewId'), instanceId = string(v.instanceId, 'instanceId');
     const view = views.get(viewId); if (!view || view.instanceId !== instanceId || !liveView(view)) return { commands: [] };
     const commands = [];
-    for (const n of navigations.values()) if (!n.delivered && n.viewId === viewId && n.instanceId === instanceId) { n.delivered = true; commands.push({ id: n.id, kind: 'reveal', source: n.source }); }
+    for (const n of navigations.values()) {
+      if (n.recipientViewId || n.instanceId !== instanceId) continue;
+      // A reloaded renderer gets a new view ID while the old heartbeat can still look fresh.
+      const preferred = views.get(n.preferredViewId);
+      if (viewId !== n.preferredViewId && liveView(preferred) && view.generation < preferred.generation) continue;
+      n.recipientViewId = viewId;
+      commands.push({ id: n.id, kind: 'reveal', source: n.source });
+    }
     return { commands };
   }
   function navigationResult(v) {
     if (!object(v) || typeof v.ok !== 'boolean') throw fail('INVALID_ARGUMENT', '导航结果无效');
     const n = navigations.get(string(v.id, 'id'));
-    if (!n || n.viewId !== string(v.viewId, 'viewId')) return { accepted: false };
+    if (!n || n.recipientViewId !== string(v.viewId, 'viewId')) return { accepted: false };
     clearTimeout(n.timeout); navigations.delete(n.id);
     if (v.ok) n.resolve({ ok: true }); else n.reject(fail(typeof v.code === 'string' ? v.code.slice(0, 100) : 'SOURCE_UNAVAILABLE', typeof v.message === 'string' ? v.message.slice(0, 500) : '未能定位原文；收藏内容仍保留'));
     return { accepted: true };
   }
   function connectionStatus(){
-    const live=[...views.values()].filter(liveView),latest=live[0]||[...views.values()].filter(v=>now()-v.seenAt<10000).sort((a,b)=>b.focusEpoch-a.focusEpoch||b.seenAt-a.seenAt)[0];
+    const live=[...views.values()].filter(liveView),latest=live.find(v=>v.viewId===data.active?.viewId)||live[0]||[...views.values()].filter(v=>now()-v.seenAt<10000).sort((a,b)=>b.focusEpoch-a.focusEpoch||b.seenAt-a.seenAt)[0];
     const codexConnected=[...codexClients.keys()].some(liveCodexClient),activeCodex=data.active?.provider==='codex';
     const compatibility=latest?{protocol:1,state:latest.compatibility?.state||(compatibleHarnessView(latest)?'ready':'checking'),version:latest.version,verified:isVerifiedHarnessVersion(latest.version),...(latest.compatibility?.message?{message:latest.compatibility.message}:{})}:null;
-    return {protocol:1,connected:live.length>0,hostVersion:latest?.version||null,...(compatibility?{compatibility}:{}),...(codexEnabled?{codex:{connected:codexConnected,active:activeCodex&&liveCodexClient(data.active.clientId),sessionId:activeCodex?data.active.sessionId:null}}:{})};
+    return {protocol:1,connected:live.length>0,hostVersion:latest?.version||null,...(activateHarness?{nativeNavigation:!!latest?.desktopPid}:{}),...(compatibility?{compatibility}:{}),...(codexEnabled?{codex:{connected:codexConnected,active:activeCodex&&liveCodexClient(data.active.clientId),sessionId:activeCodex?data.active.sessionId:null}}:{})};
   }
   async function close() {
     closed = true;

@@ -19,7 +19,6 @@ jobs:
     permissions:
       contents: write
     env:
-      GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       HUIKAN_RELEASE_TAG: ${{ inputs.tag }}
       HUIKAN_RELEASE_REVISION: ${{ inputs.revision }}
@@ -28,6 +27,8 @@ jobs:
     steps:
       - name: Validate release target
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           python3 - <<'PY'
           import json, os, re, subprocess
@@ -51,16 +52,17 @@ jobs:
       - run: npm --prefix ui ci
       - run: npm test
       - run: npm run package:mac
-      - name: Publish the matching unsigned preview
+      - name: Verify the matching preview archive
+        id: preview
         shell: bash
         run: |
           python3 - <<'PY'
-          import json, os, pathlib, plistlib, subprocess, zipfile
-          tag, revision = os.environ['HUIKAN_RELEASE_TAG'], os.environ['HUIKAN_RELEASE_REVISION']
+          import json, os, pathlib, plistlib, zipfile
+          tag = os.environ['HUIKAN_RELEASE_TAG']
           version = json.loads(pathlib.Path('package.json').read_text())['version']
           assert tag == 'v' + version
           filename = f'Huikan-{version}-mac-arm64.zip'
-          archive = pathlib.Path('../huikan-release') / filename
+          archive = (pathlib.Path('../huikan-release') / filename).resolve()
           with zipfile.ZipFile(archive) as bundle:
               assert bundle.testzip() is None
               # ditto archives may use a legacy filename flag for Unicode.
@@ -74,6 +76,30 @@ jobs:
               profile = json.loads(bundle.read(prefix + 'Contents/Resources/app/package.json'))['huikanIntegrations']
               assert profile == {'harness': True, 'codex': False}
               assert not any(part in {'.local', 'candidate-config.json', 'recall-state.json', '.env'} for name in bundle.namelist() for part in pathlib.PurePosixPath(name).parts)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as outputs:
+              print(f'archive={archive}', file=outputs)
+          PY
+      - name: Launch the extracted preview and verify persistence
+        shell: bash
+        env:
+          HUIKAN_PREVIEW_ARCHIVE: ${{ steps.preview.outputs.archive }}
+        run: |
+          extracted="$(mktemp -d "$RUNNER_TEMP/huikan-mac-smoke.XXXXXX")"
+          /usr/bin/ditto -x -k "$HUIKAN_PREVIEW_ARCHIVE" "$extracted"
+          app="$extracted/回看.app"
+          /usr/bin/codesign --verify --deep --strict "$app"
+          node scripts/smoke-packaged.cjs "$app/Contents/MacOS/Huikan"
+      - name: Publish the matching unsigned preview
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HUIKAN_PREVIEW_ARCHIVE: ${{ steps.preview.outputs.archive }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          tag, revision = os.environ['HUIKAN_RELEASE_TAG'], os.environ['HUIKAN_RELEASE_REVISION']
+          archive = pathlib.Path(os.environ['HUIKAN_PREVIEW_ARCHIVE'])
+          filename = archive.name
           release = json.loads(subprocess.check_output(['gh', 'release', 'view', tag, '--json', 'isDraft,targetCommitish,assets'], text=True))
           assert not release['isDraft'] and release['targetCommitish'] == revision
           existing = next((asset for asset in release['assets'] if asset['name'] == filename), None)

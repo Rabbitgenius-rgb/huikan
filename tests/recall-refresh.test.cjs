@@ -55,6 +55,34 @@ test('reopening a stale Harness view targets its own instance before dispatching
  assert.deepEqual(await pending,{ok:true});
 });
 
+test('a reloaded Harness view receives a pending jump once while the previous heartbeat is live',async t=>{
+ const f=await fixture(t,{activateHarness:async()=>true});
+ const background={...f.context,viewId:'older-background',focused:false,focusEpoch:0};
+ // Make the current destination newer than an already open, inactive window.
+ await f.service.handlers.publishContext(background);
+ const destination={...f.context,viewId:'current',focusEpoch:f.context.focusEpoch+1,desktopPid:201};
+ await f.service.handlers.publishContext(destination);
+ const pending=f.service.requestNavigation('synthetic-item');
+ pending.catch(()=>{});
+ await new Promise(resolve=>setImmediate(resolve));
+ const poll=view=>f.service.handlers.pollCommands({viewId:view.viewId,instanceId:view.instanceId}).commands;
+ assert.deepEqual(poll(background),[]);
+ const foreign={...background,viewId:'different-instance',instanceId:'different-instance'};
+ await f.service.handlers.publishContext(foreign);
+ assert.deepEqual(poll(foreign),[]);
+ const replacement={...destination,viewId:'reloaded',focused:false,focusEpoch:0};
+ await f.service.handlers.publishContext(replacement);
+ const commands=poll(replacement);
+ assert.equal(commands.length,1);
+ const [command]=commands;
+ assert.equal(command.source.messageId,'message');
+ assert.deepEqual(poll(destination),[]);
+ assert.deepEqual(poll(replacement),[]);
+ assert.deepEqual(f.service.handlers.navigationResult({viewId:destination.viewId,id:command.id,ok:true}),{accepted:false});
+ assert.deepEqual(f.service.handlers.navigationResult({viewId:replacement.viewId,id:command.id,ok:true}),{accepted:true});
+ assert.deepEqual(await pending,{ok:true});
+});
+
 test('identical refreshes preserve the durable state file, including after restart',async t=>{
  const f=await fixture(t),before=await fs.stat(f.file),body=await fs.readFile(f.file,'utf8');
  for(let i=0;i<3;i++)await f.service.refresh();

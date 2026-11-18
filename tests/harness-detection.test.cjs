@@ -115,6 +115,20 @@ test('process inspection safely encodes untrusted path text and never interprets
   assert.equal(await readRunning(target, { platform: 'win32', execute: async () => { throw Error('access denied'); } }), null);
 });
 
+test('Mac finds the selected executable in a process list with many long app paths', async () => {
+  const executable = '/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness';
+  const helpers = '/Applications/Long Name.app/Contents/Frameworks/Long Name Helper (Renderer).app/Contents/MacOS/Long Name Helper (Renderer)\n'.repeat(1000);
+  const otherCopy = '/Users/test/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness';
+  const detect = output => readRunning(executable, { platform: 'darwin', execute: async (command, args, { maxBuffer } = {}) => {
+    assert.equal(command, '/bin/ps');
+    assert.deepEqual(args, ['-axww', '-o', 'comm=']);
+    if (Buffer.byteLength(output) > (maxBuffer ?? 64 * 1024)) throw Error('Process list exceeds the buffer');
+    return output;
+  } });
+  assert.equal(await detect(helpers + otherCopy), false);
+  assert.equal(await detect(helpers + otherCopy + '\n' + executable), true);
+});
+
 function archiveFixture(manifest, { cli = true, malformedHeader = false } = {}) {
   const payload = Buffer.from(JSON.stringify(manifest));
   const files = { 'package.json': { size: payload.length, offset: '0' } };
