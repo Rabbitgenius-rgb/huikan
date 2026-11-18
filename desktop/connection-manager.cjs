@@ -16,11 +16,28 @@ const SETUP_MESSAGES={
  newer:'已保留更新版本的回看插件，打开 DeepSeek Harness 即可自动连接。',
  installed:'回看插件已自动安装。请打开 DeepSeek Harness，即可连接使用。'
 };
+const MAC_SETUP_MESSAGES={
+ ...SETUP_MESSAGES,
+ 'needs-initialization':'请先打开一次 DeepSeek Harness 完成初始化。完全退出后，在这里点击「安装 / 更新回看插件」。',
+ 'close-harness':'请保存工作并完全退出 Harness，再点击「安装 / 更新回看插件」。',
+ missing:'完全退出 Harness 后，点击「安装 / 更新回看插件」。',
+ 'missing-files':'插件文件缺失。完全退出 Harness 后，请重新安装回看插件。',
+ outdated:'回看插件需要更新。安装后，重新打开 Harness 即可使用「回原文」的前台切换。',
+ installed:'回看插件已安装。请重新打开 DeepSeek Harness。',
+};
+const pendingSetup=['missing','missing-files','outdated'];
+function runningBlock(harness){
+ if(harness.runningKnown===false)return 'process-unknown';
+ if(harness.running===true)return 'close-harness';
+ if(harness.running!==false)return 'process-unknown';
+ return null;
+}
 const setupError=message=>Object.assign(Error(message),{isSetupError:true});
 function createConnectionManager({directory,companionDirectory,companionPath,companionArguments=[companionPath],executable,preferences,getLibraryReady,bundledPlugin,initialSelectedPath=null,env=process.env,platform=process.platform,detect=detectHarness,call=callPrivate,publish=publishConnection,spawnProcess=spawn,runFile=execFile,onChange=()=>{},onOpenWorkbench=()=>{},onQuitRequested=()=>{},onCompanionUnavailable=()=>{},onShortcutIssue=()=>null,backgroundReadyTimeoutMs=5000}){
  let advertisement,child,selectedPath=initialSelectedPath,lastError='',closed=false,starting=null,installing=null,reconciling=null,installationActive=false,installError='',installedThisSession=false;
  const stopping=new WeakSet(),trayReady=new WeakSet();
  const file=discoveryFile(env);
+ const mac=platform==='darwin', setupMessages=mac?MAC_SETUP_MESSAGES:SETUP_MESSAGES;
  async function companionStatus(){try{return await call({directory,service:'sticky',method:'connectionStatus',params:{},timeoutMs:1200});}catch(error){if(error.code==='METHOD_NOT_FOUND')return {protocol:0,connected:false};return null;}}
  async function start(){
   if(closed||!preferences.get().autoConnect)return;
@@ -59,13 +76,9 @@ function createConnectionManager({directory,companionDirectory,companionPath,com
  }
  async function status(){
   const [harness,companion]=await Promise.all([detect({selectedPath,platform,env}),companionStatus()]);
-  const setup=platform==='win32'&&bundledPlugin&&harness.installed&&harness.supported?await inspectPlugin({env,bundledPlugin}):null;
+  const setup=(mac||platform==='win32')&&bundledPlugin&&harness.installed&&harness.supported?await inspectPlugin({env,bundledPlugin}):null;
   let pluginSetup=setup?.setup;
-  if(pluginSetup&&['missing','missing-files','outdated'].includes(pluginSetup)){
-   if(harness.runningKnown===false)pluginSetup='process-unknown';
-   else if(harness.running===true)pluginSetup='close-harness';
-   else if(harness.running!==false)pluginSetup='process-unknown';
-  }
+  if(pendingSetup.includes(pluginSetup))pluginSetup=runningBlock(harness)||pluginSetup;
   if(pluginSetup==='current'&&installedThisSession)pluginSetup='installed';
   const enabled=preferences.get().autoConnect;
   const ready=!!getLibraryReady();
@@ -73,6 +86,14 @@ function createConnectionManager({directory,companionDirectory,companionPath,com
   let state='waiting',message='打开 Harness 并启用回看插件，即可自动连接。';
   if(!enabled){state='disabled';message='自动连接已关闭。';}
   else if(installationActive){state='installing';message='正在通过 Harness 插件管理器安装，请稍候。';}
+  else if(mac&&installError){state='install-error';message=installError;}
+  else if(mac&&setup?.setup==='outdated'){
+   state='plugin-outdated';
+   message=setupMessages[pluginSetup];
+  }
+  else if(mac&&connected&&companion.nativeNavigation===false&&['current','newer'].includes(setup?.setup)){
+   state='plugin-restart';message='已安装新版回看插件。请完全退出并重新打开 Harness，以启用「回原文」的前台切换。';
+  }
   else if(connected){state='connected';message=companion?.compatibility?.verified===false?'已通过接口与消息结构检查，可以在 Harness 对话中留作回看。':'已连接，可以在 Harness 对话中留作回看。';}
   else if(lastError){state='error';message=lastError;}
   else if(installError){state='install-error';message=installError;}
@@ -82,13 +103,13 @@ function createConnectionManager({directory,companionDirectory,companionPath,com
   else if(harness.installed&&!harness.supported){state='unsupported';message='已识别此版本，当前回看插件尚未适配。';}
   else if(harness.reason==='platform'){state='manual-setup';message='此平台暂不支持自动安装 Harness 插件。请在 Harness 的插件页安装配套插件包，再返回回看连接。';}
   else if(!harness.installed){state='not-found';message='未找到 DeepSeek Harness，可以手动选择应用。';}
-  else if(SETUP_MESSAGES[pluginSetup]){
-   message=SETUP_MESSAGES[pluginSetup];
+  else if(setupMessages[pluginSetup]){
+   message=setupMessages[pluginSetup];
    state=pluginSetup==='disabled'?'plugin-disabled':pluginSetup==='development'?'plugin-managed':['current','newer','installed'].includes(pluginSetup)?'waiting':pluginSetup;
   }
   else if(!companion||!ready){state='starting';message='正在准备本机连接…';}
   else if(harness.verified===false){state='checking';message='请打开 Harness 对话；回看会自动检查接口与消息结构，通过后连接。';}
-  return {state,message,harness,plugin:{connected:companion?.connected===true,protocol:companion?.protocol||0,setup:installError?'error':pluginSetup,installedVersion:setup?.installedVersion},libraryReady:ready,automatic:enabled};
+  return {state,message,platform,harness,plugin:{connected:companion?.connected===true,protocol:companion?.protocol||0,setup:installError?'error':pluginSetup,installedVersion:setup?.installedVersion,bundledVersion:bundledPlugin?.version},libraryReady:ready,automatic:enabled};
  }
  async function install(pluginPackage=bundledPlugin?.packagePath,{automatic=false}={}){
   if(installing)return installing;
@@ -98,25 +119,28 @@ function createConnectionManager({directory,companionDirectory,companionPath,com
    if(platform!=='darwin'&&platform!=='win32')throw setupError('此平台暂不支持自动安装，请在 Harness 的插件页安装配套插件包。');
    const harness=await detect({selectedPath,platform,env});if(!harness.installed||!harness.supported)throw setupError('请先选择已适配的 DeepSeek Harness。');
    let cli=harness.cli;
-   if(platform==='win32'){
+   if(platform==='win32'||bundledPlugin){
     if(!bundledPlugin||pluginPackage!==bundledPlugin.packagePath)throw setupError('安装包中缺少回看插件，请重新安装回看。');
     const setup=await inspectPlugin({env,bundledPlugin});
-    if(['current','newer','development','disabled','needs-initialization','profile-error'].includes(setup.setup))return {setup:setup.setup,message:SETUP_MESSAGES[setup.setup]};
-    if(harness.runningKnown===false)return {setup:'process-unknown',message:SETUP_MESSAGES['process-unknown']};
-    if(harness.running===true)return {setup:'close-harness',message:SETUP_MESSAGES['close-harness']};
-    if(harness.running!==false||harness.runningKnown===false)return {setup:'process-unknown',message:SETUP_MESSAGES['process-unknown']};
+    if(!pendingSetup.includes(setup.setup))return {setup:setup.setup,message:setupMessages[setup.setup]};
+    const blocked=runningBlock(harness);
+    if(blocked)return {setup:blocked,message:setupMessages[blocked]};
+   }
+   if(!mac){
     if(!cli||!Array.isArray(cli.args)||typeof cli.command!=='string')throw setupError('Harness 缺少可用的插件安装入口，请重新安装官方版本后重试。');
    }else{
     cli=cli||{command:path.join(harness.path,'Contents/Resources/runtime/cli/bin/dsh'),args:[]};
-    const profile=path.join(harnessHome(env),'profiles','desktop','package.json');
-    try{await fs.access(profile);}catch{throw setupError('请先打开一次 Harness 完成初始化，再正常退出后安装插件。');}
+    if(!bundledPlugin){
+     const profile=path.join(harnessHome(env),'profiles','desktop','package.json');
+     try{await fs.access(profile);}catch{throw setupError('请先打开一次 Harness 完成初始化，再正常退出后安装插件。');}
+    }
    }
    await fs.access(cli.command);
    await fs.access(pluginPackage);
    if(closed||(automatic&&!preferences.get().autoConnect))return;
    installationActive=true;installError='';onChange();
    await new Promise((resolve,reject)=>{runFile(cli.command,[...cli.args,'plugin','--profile','desktop','add',pluginPackage],{env:{...env,...cli.env,DSH_HOME:harnessHome(env)},cwd:path.dirname(pluginPackage),windowsHide:true,timeout:120000,maxBuffer:256*1024},error=>error?reject(setupError('插件安装未完成。请正常退出 Harness 并检查网络后点击重新检测；回看不会反复自动安装。')):resolve());});
-   if(platform==='win32'){
+   if(bundledPlugin){
     const after=await inspectPlugin({env,bundledPlugin});
     if(!['current','newer'].includes(after.setup))throw setupError('Harness 尚未确认回看插件安装完成，请打开 Harness 检查插件设置后重新检测。');
    }

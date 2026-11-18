@@ -4,7 +4,20 @@
 
 回看是一个以本机保存为核心的 AI 对话留存与回看工具。当前主线专注 DeepSeek Harness 插件；Codex 本机 MCP 作为暂存适配独立保留，默认关闭。后续推进用户可定制组件。
 
-[下载 Mac 预览版 0.3.16](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.3.16/Huikan-0.3.16-mac-arm64.zip) · [下载完整项目资料包](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.3.16/Huikan-0.3.16-project-kit.zip)
+## 下载安装
+
+| 平台 | 当前预览版 | 安装包 | 发行说明 |
+| --- | --- | --- | --- |
+| macOS（Apple Silicon） | 0.3.16 | [下载 ZIP](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.3.16/Huikan-0.3.16-mac-arm64.zip) | [Mac 0.3.16](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.3.16) |
+| Windows 10/11（x64） | 0.3.1 | [下载安装程序](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.3.1/Huikan-0.3.1-windows-x64-setup.exe) | [Windows 0.3.1](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.3.1) |
+
+Mac 版解压后将「回看.app」移到「应用程序」。Windows 版按安装向导操作。安装包已内置工作台和回看插件，无需额外安装 Node.js。搭配 Harness 使用时，请完成 [插件安装或更新](#接入-deepseek-harness)。
+
+[下载 0.3.16 完整项目资料包](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.3.16/Huikan-0.3.16-project-kit.zip) · [历史版本记录](docs/RELEASE_HISTORY.md)
+
+### Mac 首次打开
+
+Mac 预览包使用临时签名。若首次打开时被 macOS 拦截，请确认文件来自上表的 GitHub 发行页，尝试打开一次，再到 **系统设置 → 隐私与安全性** 点击 **仍要打开**，按系统提示确认。详见 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。Windows 安装包尚未签名，首次运行可能出现 SmartScreen 或「未知发布者」提示。
 
 ![回看工作台按来源会话展示摘录](docs/previews/v0.3.16/workbench.png)
 
@@ -19,9 +32,11 @@
 <img src="docs/previews/v0.3.16/return-to-source.gif" width="680" alt="从书包便签跳回 Harness 并高亮保存的选区">
 
 <details>
-<summary>大肥鱼的 16 段待机与小动作</summary>
+<summary>大肥鱼的待机与小动作</summary>
 
-<img src="docs/previews/v0.3.16/whale-idle-actions.gif" width="360" alt="大肥鱼自然待机、伸懒腰、打盹等 16 段动作循环">
+<img src="docs/previews/v0.3.16/whale-idle-preview.gif" width="320" alt="大肥鱼自然待机、招呼、伸懒腰、打盹和游动的短预览">
+
+[查看完整 GIF（16 段动作，约 35 秒）](docs/previews/v0.3.16/whale-idle-actions.gif)
 
 </details>
 
@@ -50,93 +65,9 @@
 
 **阶段：早期开发版。** 提供 macOS Apple Silicon 与 Windows x64 预览构建；Windows 版尚未做代码签名，Mac 版尚无 Developer ID 签名与公证。内容识别使用本机规则，开放组件接口与社区组件分享属于后续计划，详见 [发展计划](docs/ROADMAP.md)。
 
-## 下载安装
-
-### Mac 0.3.9（Harness 专注版，本地候选）
-
-- 首页和设置只提供 DeepSeek Harness 接入，原有保存、主题浮窗、便签和鲸鱼娘保持。
-- 默认构建不包含 Codex MCP；Codex 心跳、上下文、新增保存和配置安装接口默认关闭。
-- 历史 Codex 摘录与首次来源去重兼容保留；不删除资料，也不改写已有 Codex 全局配置。
-
-以下为较早版本的发行记录；其中的 Codex 功能不代表当前默认构建包含该接入。
-
-### 0.3.15 书包便签同步候选
-
-- 桌面已贴出的便签共用一只大肥鱼。点击角色打开书包，从浅黄色标签里读正文或回到原消息。再次点击或按 Esc 合包。
-- 角色缩至上一候选约三分之二，便签文字按原尺寸阅读。待机、伸懒腰及其他小动作使用同一套透明动画素材。
-- 保留最多五条置顶、拖动定位、已读状态、取消贴出和旧便签恢复。macOS 书包候选通过原生浮窗验证。
-
-### Mac 0.3.8（历史本地候选）
-
-- 桌面便签收起后显示蓝发鲸鱼娘，点击或按 Enter / Space 展开原文；拖动角色移动同一条便签，正文和来源保持。
-- 支持待机眨眼、悬停招呼和被拎起姿态；系统开启“减少动态效果”时保留静态角色和全部操作。透明区域穿透鼠标，展开阅读和隐藏时停止角色计时。
-- 旧版标题标签使用原有收起状态恢复，按保存的右侧位置显示角色。最多贴出五条便签；取消贴出仍保留摘录。
-
-### Mac 0.3.7（本地测试包）
-
-- Harness 兼容判断改为会话接口、来源定位接口和实际消息正文结构检查；新版本不再仅因版本号变化被拦截。
-- 尚未验证的新版本需先打开包含消息的对话，检查通过后自动连接；接口缺失、正文范围不唯一时明确提示，并拒绝保存。
-- 配套回看插件 `0.3.3`；保留已验证版本记录、旧版本正文适配和原文定位校验。未知未来 Harness 的实际运行仍需在对应版本中核对。
-
-### Mac 0.3.6 本地预览改动
-
-- 增加 DeepSeek Harness `0.2.2-rc.1` 的版本、插件和消息正文适配，随包提供回看插件 `0.3.2`。
-- 保留 `0.3.5` 的按钮焦点恢复与浅色按钮文字对比度修复。
-
-### Mac 0.3.5 本地预览改动
-
-- 同一主题刷新后保留“贴便签”“回原文”和关闭按钮的键盘焦点；刷新不会改变下一次 Enter 的操作。
-- 浅色预设中的整理、重试及已贴出按钮改用正文文字色，提升正常与悬停状态下的文字对比度。
-
-### Mac 0.3.4 本地预览改动
-
-此版本已在本地实现，公开下载仍以下方各发行页为准。
-
-- 首页、浮窗、便签和应用图标统一为“回看”；空资料库可直接进入 Codex 或 Harness 的连接设置。
-- Mac 关闭工作台后保留菜单栏、浮窗与本机连接。点击 Dock 图标，或在菜单栏回看的右键菜单选择“打开回看工作台”，即可继续使用；“退出回看”才会保存并结束后台服务。后台入口未就绪时，工作台会保留可见并提示处理。
-- 已提交的资料变更会通知浮窗更新，另外保留 30 秒一次的兜底检查。相同状态不再重复写盘；失败的写入仍可重试。旧资料目录、来源信息与连接协议继续兼容。
-- 切回同一 Harness 对话时会及时补读；焦点或标题变化不会丢弃同一来源的有效读取结果。Codex 明确选择当前线程时也会刷新，普通心跳不触发资料读取。
-- Mac 默认用 `⌘⇧K` 打开/收起浮窗。快捷键被占用时会显示提示；右键菜单栏的回看图标，在“唤出快捷键”中可改为 `⌘⌥K` 或 `⌘⇧Space`。选择会保存并在重启后恢复；改键失败时保留原有可用组合。
-
-Mac 图标源文件为 `desktop/assets/icon.svg`，系统图标为 `desktop/assets/icon.icns`。需要重新生成时，在 macOS 上运行 `swift scripts/create-app-icon.swift /tmp/huikan.iconset`，再运行 `iconutil -c icns /tmp/huikan.iconset -o desktop/assets/icon.icns`。
-
-[**下载 Windows 10/11 64 位安装程序（0.3.1）**](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.3.1/Huikan-0.3.1-windows-x64-setup.exe) · [发行说明](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.3.1)
-
-双击安装程序，按向导安装后打开“回看”。无需另装 Node.js；工作台和浮窗一起安装。Windows 安装包未做代码签名，首次运行可能显示“未知发布者”或 SmartScreen 提示；请核对下载来源为本项目的 GitHub 发行页。组织策略禁止运行未签名程序时，需要管理员按其策略处理。
-
-Windows 0.3.1 已在 GitHub Windows Server 2025 构建环境实际安装：工作台与浮窗启动、中文资料路径、示例原文保存、重复请求去重和重启恢复均通过。使用官方 Harness 0.2.1-rc.3 的额外联调也通过了安装记录自动发现、插件自动安装、重复检测不重复安装、真实客户端心跳及正常退出。摘录测试通过真实宿主插件接口发送合成内容，尚未覆盖真实对话界面的选中文字操作及全部来源回跳。额外的 Codex 安装测试通过了内置 MCP 运行环境、配置安装与握手、精确保存、线程隔离、重试和重启恢复；真实 Harness 也通过了跨 Codex/Harness 双向去重保留首次来源的检查。
-
-0.3.1 的额外原生窗口检查通过了主题首页、跨轮次主题归组、完整原文、悬停与点击打开、主次窗焦点切换、隐藏重开、贴出便签、切换对话关闭旧详情、Acrylic 系统属性读回和正常退出。该 Server 环境的实际桌面截图呈现实色，因此不能将它作为普通 Windows 11 电脑最终模糊质感的验收；系统材质会受透明度设置、系统版本和运行环境影响。[构建与安装检查](https://github.com/Rabbitgenius-rgb/huikan/actions/runs/41062595015)。
-
-Windows 版内置回看插件，启动时自动识别支持的官方 Harness。已初始化且完全退出的宿主会自动安装插件；安装后打开 Harness 即可连接。无需手动导入 `.tgz`，也无需额外安装 Node.js。首次安装可能需要联网下载宿主插件依赖。
-
-Windows 0.3.1 起，关闭工作台会隐藏到系统托盘，资料库和连接继续在后台运行。左键托盘图标或按默认 `Ctrl+Shift+K` 打开/收起回看浮窗；右键可打开工作台、显示/隐藏便签、选择唤出快捷键或退出回看。`Esc` 和 `Alt+F4` 会收起回看浮窗，再次唤出仍可使用。
-
-“唤出快捷键”提供 `Ctrl+Shift+K`、`Ctrl+Alt+K` 和 `Ctrl+Shift+Space`，选择会保存并在重启后恢复；新组合被占用或设置未保存时保留原快捷键。首次关闭工作台会显示轻提示，系统也可能将图标收进托盘的隐藏区域，可自行将其移出。只有“退出回看”才会保存并结束后台工作台与浮窗。若自动连接已关闭或托盘未能启动，工作台会保持可见并提示处理。
-
-0.3.1 已验证关窗后通过 MCP 保存、系统快捷键、`Esc`/`Alt+F4` 后重新唤出、菜单恢复工作台、改键及摘录重启恢复，以及两轮正常托盘退出。按键通过实际 Windows 输入 API 发送；托盘入口通过真实 Tray/Menu 回调触发，未覆盖物理鼠标命中托盘或隐藏区域。检查只使用独立合成资料，未发出模型请求。
-
-[**下载 macOS Apple Silicon 预览包（0.3.0）**](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.3.0/Huikan-0.3.0-mac-arm64.zip) · [发行说明与全部附件](https://github.com/Rabbitgenius-rgb/huikan/releases/tag/v0.3.0)
-
-适用于 M 系列芯片 Mac，已包含主题浮窗与 Codex 本机 MCP 接入。下载 ZIP 后解压，将“回看.app”移到“应用程序”目录，再打开使用；配套 Harness 插件已内置，无需另行下载源码或安装 Node.js。该历史版的 Codex 说明见暂存适配文档；当前主线步骤见下文“接入 DeepSeek Harness”。
-
-当前为开发预览包，尚无 Developer ID 签名与 Apple 公证，macOS 可能阻止打开；尚未完成干净机器安装验证。Intel Mac 与 Windows ARM64 原生安装包暂未提供。
-
-### Mac 首次打开
-
-如果第一次打开时提示“无法验证开发者”或“Apple 无法检查其是否包含恶意软件”，请先确认文件来自本项目的 GitHub 发行页，再按以下步骤操作：
-
-1. 使用访达解压 ZIP，将“回看.app”移到“应用程序”目录，并尝试打开一次。
-2. 如果被系统拦截，进入 **系统设置 → 隐私与安全性**，在“安全性”区域找到回看对应的提示，点击 **仍要打开**。
-3. 按系统提示确认，再打开回看；系统可能要求由你本人输入登录密码或使用 Touch ID。
-
-这是针对该应用的一次确认，具体操作参见 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。
-
-已下载 GitHub 公开的 0.3.0 ZIP 进行本机复查：临时签名完整性、独立资料目录中的工作台与 MCP 启动、实际握手、精确原文保存、线程隔离、去重和重启恢复均通过。这不等同于其他 Mac 的首次安装验证。
-
 ## 浮窗在 Windows 与 Mac 上的显示
 
-0.2.4 源码统一使用主题列表，不再提供轮次分组界面。主浮窗为 320 × 400，按主题显示；悬停或点击主题后，在独立浮窗查看简介和完整摘录，再从正文拖出黄色便签。已贴出的便签收在同一只大肥鱼的书包里，打开书包后点击浅黄色标签即可阅读。Mac 从菜单栏打开，Windows 从系统托盘或 `Ctrl+Shift+K` 打开。来源轮次仅在内部保留，供回到原文使用。
+当前源码按主题组织摘录。主浮窗为 320 × 400，按主题显示；悬停或点击主题后，在独立浮窗查看简介和完整摘录，再从正文拖出黄色便签。已贴出的便签收在同一只大肥鱼的书包里，打开书包后点击浅黄色标签即可阅读。Mac 从菜单栏打开，Windows 从系统托盘或 `Ctrl+Shift+K` 打开。来源轮次仅在内部保留，供回到原文使用。
 
 0.2.3 起，Windows 的回看面板和原文预览使用系统 Desktop Acrylic，预览同步浮窗的颜色和透明度。原生毛玻璃要求 Windows 11 22H2（build 22621）及以上；Windows 10、旧版 Windows 11、系统减少透明度或高对比度模式采用实色背景。系统省电、远程会话或硬件环境也可能使材质退化为实色。支持范围见 [Electron 系统材质说明](https://www.electronjs.org/docs/latest/api/base-window#winsetbackgroundmaterialmaterial-windows)。
 
@@ -176,9 +107,9 @@ Codex 适配已退出默认构建、设置和连接流程，单独保存在 [cod
 
 ## 接入 DeepSeek Harness
 
-已实测版本包括 `0.2.0-rc.2`、`0.2.1-rc.3`、`0.2.2-rc.1`；其他版本会自动检查接口与消息结构，通过后连接，失败时明确提示。构建、打包和宿主配置说明见 [插件文档](harness-plugin/README.md)。
+已实测版本包括 `0.2.0-rc.2`、`0.2.1-rc.3`、`0.2.2-rc.1` 和 `0.2.2-rc.3`；其他版本会自动检查接口与消息结构，通过后连接，失败时明确提示。构建、打包和宿主配置说明见 [插件文档](harness-plugin/README.md)。
 
-Windows 首次使用：
+### Windows 首次使用
 
 1. 安装 [DeepSeek Harness 官方桌面版](https://www.deepseek.com/download/)，打开一次完成初始化，再完全退出 Harness。
 2. 安装并打开回看。回看会检查常用目录和当前用户的安装记录，自动安装内置插件；自定义位置可在设置中选择 `DeepSeek Harness.exe`。
@@ -186,12 +117,14 @@ Windows 首次使用：
 
 如果 Harness 正在运行，回看会等你完全退出后再安装。已有同版、新版、开发链接或被停用的回看插件会保留；停用的插件需在 Harness 中自行启用。安装失败时可在设置里重新检测重试。关闭“启动时自动连接”会停止后台安装检查。账号登录和模型服务配置仍在 Harness 中完成。
 
-macOS 首次使用（0.3.0 请同步更新内置回看插件，支持跨来源去重）：
+### macOS 首次使用
 
 1. 打开一次 DeepSeek Harness，完成宿主初始化，然后正常退出。
 2. 打开回看左下角的 **连接与识别设置**，确认识别到的 Harness 版本；不在常见目录时可选择应用。
 3. 点击 **安装 / 更新回看插件**。回看使用 Harness 自带的官方安装器安装内置插件包，安装过程可能需要网络。
-4. 重新打开 Harness 并启用回看插件，打开对话；设置显示“已连接”后即可留作回看。
+4. 重新打开 Harness 并启用回看插件，然后打开一段对话。连接状态显示「已连接」后，即可留作回看。
+
+使用 Mac 0.3.16 的「回原文」前，请用上述步骤更新到随包提供的回看插件 `0.3.4`。更新后完全退出并重新打开 Harness，新插件才会生效。
 
 之后回看会自动发布本机发现信息，插件自动跟随正在运行的回看，无需填写目录或连接地址。已有的插件显式 `bridgeDirectory` 配置、`MENGCANG_RECALL_BRIDGE_DIR` 环境变量仍优先；若旧配置指向其他实例，应先移除旧配置或统一路径。
 
@@ -223,9 +156,21 @@ npm run package:mac
 
 输出为仓库旁 `huikan-release/Huikan-<版本>-mac-arm64.zip`。解压后将“回看.app”放到应用目录即可试用。Mac 构建脚本当前仅面向 Apple Silicon，使用本机临时签名，尚未完成干净机器安装验证、Developer ID 签名与 Apple 公证，不应视作正式稳定发行。
 
+预览发布工作流会解压生成的 ZIP，校验应用签名，再用独立资料目录启动工作台和浮窗，检查保存、重复保存及重启恢复。以上检查通过后才会上传安装包。
+
+解压后可在本机重复运行启动检查。
+
+```sh
+node scripts/smoke-packaged.cjs "/绝对路径/回看.app/Contents/MacOS/Huikan"
+```
+
+验证书包的「回原文」时，在官方 Harness 中用测试对话保存一段选区并贴成便签。在 Harness 居于后台、关窗后，以及页面重载期间各点击一次「回原文」，检查窗口是否回到前台并高亮原选区。
+
+Mac 图标源文件为 `desktop/assets/icon.svg`，系统图标为 `desktop/assets/icon.icns`。如需重新生成，运行 `swift scripts/create-app-icon.swift /tmp/huikan.iconset`，再运行 `iconutil -c icns /tmp/huikan.iconset -o desktop/assets/icon.icns`。
+
 ## 正式签名与 Apple 公证
 
-当前公开下载的 0.3.0 仍为未公证预览包。正式公证流程已提供构建入口，但需要发布者先开通 Apple Developer Program，并在本机配置有效的 **Developer ID Application** 发布证书；Apple Development 测试证书不适用于此流程。
+当前公开下载的 Mac 版仍为未公证预览包。正式公证流程已提供构建入口，但需要发布者先开通 Apple Developer Program，并在本机配置有效的 **Developer ID Application** 发布证书；Apple Development 测试证书不适用于此流程。
 
 公证凭据只保存在 macOS 钥匙串中。在本机终端运行 `xcrun notarytool store-credentials huikan-notary`，由发布者在交互提示中完成账号、公证凭据与开发团队的配置。不要把密码、私钥或公证凭据写入源码、发布附件或 GitHub 日志。
 
