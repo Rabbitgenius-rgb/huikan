@@ -21,9 +21,10 @@
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   let preparing = false, morph = null, serial = 0, fitFrame = 0, motionFrame = 0, groupBusy = false, motionIdleSerial = 0, readTimer, readSaved = false;
   let ignoreMouse = false, lastPointer = null, pointerOverPet = false;
-  const pet = window.RecallWhalePet.create(petCanvas, { source: res.petSource, seed: id, reduced: reducedMotion.matches,
+  const pet = window.RecallWhalePet.create(petCanvas, { source: res.petSource, extraSource: res.petMotionSource, videos: res.petVideos, reduced: reducedMotion.matches,
     onReady: () => { card.dataset.petReady = 'true'; syncHit(); },
     onError: () => { card.dataset.petReady = 'error'; petFallback.textContent = '角色暂未加载，点击展开便签'; syncHit(); },
+    onFrame: () => syncHit(),
   });
   function setIgnore(value) { if (ignoreMouse !== value) { ignoreMouse = value; window.api.stickySetIgnore(value); } }
   function syncHit(point = lastPointer) {

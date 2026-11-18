@@ -29,6 +29,7 @@ async function launch(settle,{timeoutMs=1000,platform='darwin',backgroundReady=t
  });
  const mocks={
   electron:{app,BrowserWindow,ipcMain:{handle:(name,fn)=>handlers.set(name,fn)},protocol:{registerSchemesAsPrivileged(){},handle(){}},Menu:{buildFromTemplate:v=>v,setApplicationMenu(){}},dialog:{showMessageBox:(_window,options)=>{dialogOptions.push(options);dialogVisibility.push(visible);return new Promise(resolve=>dialogs.push((response=0)=>resolve({response})));},showErrorBox(){throw Error('Unexpected startup failure');}},shell:{}},
+  'node:fs':{readFileSync(){throw Object.assign(Error('No candidate profile'),{code:'ENOENT'});}},
   'node:fs/promises':{async mkdir(){},async readFile(){throw Object.assign(Error('No selection'),{code:'ENOENT'});}},'node:path':path,'node:os':{homedir:()=>'/synthetic-home'},
   './security.cjs':{trustedFrame:()=>true},
   './app-preferences.cjs':{createPreferences:()=>({async load(){},get:()=>({autoConnect:false}),async settle(){}})},

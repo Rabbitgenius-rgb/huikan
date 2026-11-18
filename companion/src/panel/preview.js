@@ -27,8 +27,8 @@
     try {
       const result = await api.pinItem(id);
       if (context !== current) return;
-      if (result.ok) { pinned.add(id); markHintSeen(); syncPinned(); message(result.alreadyPinned ? '已显示贴出的便签' : '已贴为便签'); }
-      else message(result.reason === 'limit' ? `最多同时贴 ${result.max} 个便签` : result.reason === 'save-failed' ? '便签已贴出，位置尚未保存' : '该内容暂时不能贴出');
+      if (result.ok) { pinned.add(id); markHintSeen(); syncPinned(); message(result.alreadyPinned ? '已在大肥鱼的书包里' : '已放进大肥鱼的书包'); }
+      else message(result.reason === 'limit' ? `最多同时贴 ${result.max} 个便签` : result.reason === 'save-failed' ? '便签尚未贴出，请重试' : '该内容暂时不能贴出');
     } catch { if (context === current) message('便签暂未贴出，请重试'); }
   }
   function actionButton(className, iconName, label) {

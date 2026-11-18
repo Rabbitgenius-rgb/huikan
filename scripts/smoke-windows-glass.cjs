@@ -252,9 +252,16 @@ async function main() {
     await inspector.evaluate(expression(`const win=${topicWindow};win.focus();return true;`));
     await detailJS('(()=>{const row=document.querySelector(".topic-excerpt[data-id=\\"glass-0\\"]");if(!row)throw Error("Topic excerpt row missing");row.focus();return true;})()');
     await inspector.evaluate(expression(`const win=${topicWindow};win.webContents.sendInputEvent({type:'keyDown',keyCode:'Enter',modifiers:['shift']});win.webContents.sendInputEvent({type:'keyUp',keyCode:'Enter',modifiers:['shift']});return true;`));
-    const pinned = await until(() => inspector.evaluate(expression(`const rec=state.stickies.get('glass-0');return rec?.win?.isVisible()?{id:rec.id,text:rec.item.text,source:rec.item.externalSource,body:await rec.win.webContents.executeJavaScript('document.body.innerText')}:null;`)), 10000, 'Topic detail could not pin its own excerpt.');
+    const bagWindow = "BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().endsWith('/bag/index.html'))";
+    const pinned = await until(() => inspector.evaluate(expression(`const rec=state.stickies.get('glass-0');const bag=${bagWindow};return rec&&bag?.isVisible()?{text:rec.item.text,source:rec.item.externalSource}:null;`)), 10000, 'Topic detail could not pin its own excerpt.');
     assert.equal(pinned.text, items[0].text); assert.deepEqual(pinned.source, items[0].externalSource);
-    assert.match(pinned.body, /此处是独立测试内容/);
+    const bagJS = code => inspector.evaluate(expression(`return ${bagWindow}.webContents.executeJavaScript(${JSON.stringify(code)});`));
+    await bagJS("document.querySelector('#pet').click();true");
+    await until(() => bagJS("!document.querySelector('#tags').inert"), 10000, 'The bag did not reveal its label.');
+    await bagJS("document.querySelector('.note[data-id=glass-0] .tag').click();true");
+    assert.match(await bagJS("document.querySelector('.copy:not([hidden]) .body').textContent"), /此处是独立测试内容/);
+    await bagJS("document.querySelector('#pet').click();true");
+    await until(() => bagJS("document.body.dataset.phase==='idle'"), 10000, 'The bag did not close.');
     // Reopen the topic if pinning moved focus to the new native note, then
     // prove a later conversation cannot retain or act on the stale popup.
     await inspector.evaluate(expression('state.panel.show();state.panel.focus();return true;'));

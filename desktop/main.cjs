@@ -1,6 +1,6 @@
 'use strict';
 const {app,BrowserWindow,ipcMain,protocol,Menu,dialog,shell}=require('electron');
-const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
+const fs=require('node:fs/promises'),{readFileSync}=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {trustedFrame}=require('./security.cjs');
 const {startRecallBridge}=require('./recall-bridge.cjs');
 const {createRecallPresentation}=require('./recall-presentation.cjs');
@@ -9,10 +9,23 @@ const {createPreferences}=require('./app-preferences.cjs');
 const {createConnectionManager}=require('./connection-manager.cjs');
 const {inspectHarness}=require('./harness-detection.cjs');
 const pluginManifest=require('../harness-plugin/package.json');
-app.setName('回看工作台');
-if(process.env.HUIKAN_DATA_HOME){if(!path.isAbsolute(process.env.HUIKAN_DATA_HOME))throw Error('资料目录必须是绝对路径');app.setPath('userData',process.env.HUIKAN_DATA_HOME);}
-const bridgeDirectory=process.env.MENGCANG_RECALL_BRIDGE_DIR||path.join(app.getPath('userData'),'bridge');
-const companionDirectory=process.env.HUIKAN_COMPANION_HOME||path.join(app.getPath('userData'),'companion');
+let bagProfile;
+try { bagProfile = JSON.parse(readFileSync(path.join(__dirname,'bag-preview-config.json'),'utf8')).profile; }
+catch (error) { if (error.code !== 'ENOENT') throw error; }
+if (bagProfile !== undefined && !path.isAbsolute(bagProfile)) throw Error('书包候选资料目录必须是绝对路径');
+app.setName(bagProfile ? '回看书包候选' : '回看工作台');
+const desktopData = process.env.HUIKAN_DATA_HOME || (bagProfile && path.join(bagProfile,'desktop'));
+if (desktopData) {
+  if (!path.isAbsolute(desktopData)) throw Error('资料目录必须是绝对路径');
+  app.setPath('userData',desktopData);
+}
+if (bagProfile) {
+  process.env.HUIKAN_BAG_PREVIEW = '1';
+  process.env.HUIKAN_DISCOVERY_FILE ||= path.join(bagProfile,'discovery','connection.json');
+  process.env.DSH_HOME = path.join(bagProfile,'harness');
+}
+const bridgeDirectory=process.env.MENGCANG_RECALL_BRIDGE_DIR||path.join(bagProfile || app.getPath('userData'),'bridge');
+const companionDirectory=process.env.HUIKAN_COMPANION_HOME||path.join(bagProfile || app.getPath('userData'),'companion');
 const identity={id:'recall-local-v1',name:'回看',storage:'local-indexeddb'};
 protocol.registerSchemesAsPrivileged([{scheme:'mengcang',privileges:{standard:true,secure:true,supportFetchAPI:true,corsEnabled:true}}]);
 let win,bridge,presentation,preferences,connection,connectionTimer,drained=false,quitting=false,quitTask,quitId=null,hiddenToTray=false,hideTask,sessionEnding=false,activationId=0;

@@ -17,13 +17,23 @@ if(release){
 }
 const version=JSON.parse(await fs.readFile(path.join(root,'package.json'),'utf8')).version;
 const out=path.resolve(process.env.HUIKAN_PACKAGE_OUT||path.join(root,release?'../huikan-release/notarized':'../huikan-release'));
-const apps=await packager({dir:path.join(root,'desktop/build'),out,name:'回看',executableName:'Huikan',icon:path.join(root,'desktop/assets/icon.icns'),appBundleId:'io.huikan.desktop',appVersion:version,electronVersion:'44.4.5',platform:'darwin',arch:'arm64',asar:false,prune:false,overwrite:true,...releaseOptions,...(process.env.HUIKAN_ELECTRON_ZIP_DIR?{electronZipDir:path.resolve(process.env.HUIKAN_ELECTRON_ZIP_DIR)}:{})});
-const app=path.join(apps[0],'回看.app');
+const bagProfile=process.env.HUIKAN_BAG_PREVIEW_PROFILE;
+if(bagProfile && (release || !path.isAbsolute(bagProfile)))throw Error('书包候选必须使用本地绝对资料目录');
+const name=bagProfile?'回看书包候选':'回看';
+const config=path.join(root,'desktop/build/bag-preview-config.json');
+let apps, createdConfig=false;
+try {
+ if(bagProfile){await fs.writeFile(config,JSON.stringify({profile:bagProfile}),{flag:'wx'});createdConfig=true;}
+ apps=await packager({dir:path.join(root,'desktop/build'),out,name,executableName:bagProfile?'HuikanBag':'Huikan',icon:path.join(root,'desktop/assets/icon.icns'),appBundleId:bagProfile?'io.huikan.desktop.bag-preview':'io.huikan.desktop',appVersion:version,electronVersion:'44.4.5',platform:'darwin',arch:'arm64',asar:false,prune:false,overwrite:true,...releaseOptions,...(process.env.HUIKAN_ELECTRON_ZIP_DIR?{electronZipDir:path.resolve(process.env.HUIKAN_ELECTRON_ZIP_DIR)}:{})});
+} finally {
+ if(createdConfig)await fs.rm(config,{force:true});
+}
+const app=path.join(apps[0],name+'.app');
 if(release){
  execFileSync('/usr/bin/codesign',['--verify','--deep','--strict',app],{stdio:'inherit'});
  execFileSync('/usr/bin/xcrun',['stapler','validate',app],{stdio:'inherit'});
  execFileSync('/usr/sbin/spctl',['--assess','--type','execute','--verbose=2',app],{stdio:'inherit'});
 }else execFileSync('/usr/bin/codesign',['--force','--deep','--sign','-',app],{stdio:'inherit'});
-const zip=path.join(out,`Huikan-${version}-mac-arm64.zip`);
+const zip=path.join(out,`Huikan-${bagProfile?'Bag-':''}${version}-mac-arm64.zip`);
 execFileSync('/usr/bin/ditto',['-c','-k','--sequesterRsrc','--keepParent',app,zip]);
 console.log(zip);
