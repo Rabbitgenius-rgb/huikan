@@ -4,7 +4,37 @@
 
 回看是一个以本机保存为核心的 AI 对话留存与回看工具。当前主线专注 DeepSeek Harness 插件；Codex 本机 MCP 作为暂存适配独立保留，默认关闭。后续推进用户可定制组件。
 
-![回看工作台示例](docs/workbench.png)
+[下载 Mac 预览版 0.3.16](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.3.16/Huikan-0.3.16-mac-arm64.zip) · [下载完整项目资料包](https://github.com/Rabbitgenius-rgb/huikan/releases/download/v0.3.16/Huikan-0.3.16-project-kit.zip)
+
+![回看工作台按来源会话展示摘录](docs/previews/v0.3.16/workbench.png)
+
+## 书包便签演示
+
+| 大肥鱼开包与合包 | 展开便签阅读 |
+| --- | --- |
+| <img src="docs/previews/v0.3.16/bag-open-close.gif" width="330" alt="大肥鱼取出书包，打开浅黄色标签，再合上书包"> | <img src="docs/previews/v0.3.16/note-expand.gif" width="330" alt="点击浅黄色标签展开便签正文"> |
+
+点击便签里的「回原文」，对应的 Harness 窗口会切到前台并高亮原消息或选区。
+
+<img src="docs/previews/v0.3.16/return-to-source.gif" width="680" alt="从书包便签跳回 Harness 并高亮保存的选区">
+
+<details>
+<summary>大肥鱼的 16 段待机与小动作</summary>
+
+<img src="docs/previews/v0.3.16/whale-idle-actions.gif" width="360" alt="大肥鱼自然待机、伸懒腰、打盹等 16 段动作循环">
+
+</details>
+
+<details>
+<summary>查看浅黄色标签、便签正文和原文高亮截图</summary>
+
+| 书包标签 | 便签正文 |
+| --- | --- |
+| ![书包打开后显示浅黄色标签](docs/previews/v0.3.16/bookbag-tags.png) | ![展开的便签显示正文和回原文按钮](docs/previews/v0.3.16/note-reader.png) |
+
+![DeepSeek Harness 高亮便签对应的原文选区](docs/previews/v0.3.16/harness-highlight.png)
+
+</details>
 
 ## 已有能力
 
