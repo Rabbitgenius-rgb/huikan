@@ -68,7 +68,7 @@ const keyOf = s => s ? `${s.instanceId}\0${s.sessionId}` : '';
 const errorOf = e => ({ code: typeof e?.code === 'string' ? e.code : 'UNAVAILABLE', message: typeof e?.message === 'string' ? e.message.slice(0, 500) : '连接暂不可用，请重试' });
 
 /** Owns only recoverable delivery state, a discardable library cache, and window preferences. */
-async function createRecallService({ userData, callDream, now = Date.now, navigationTimeoutMs = 12000, onContext = () => {}, codexEnabled = defaultCodexEnabled }) {
+async function createRecallService({ userData, callDream, now = Date.now, navigationTimeoutMs = 12000, onContext = () => {}, activateHarness, codexEnabled = defaultCodexEnabled }) {
   if (!path.isAbsolute(userData) || typeof callDream !== 'function') throw Error('Invalid recall service configuration');
   await fs.mkdir(userData, { recursive: true, mode: 0o700 });
   const file = path.join(userData, 'recall-state.json');
@@ -176,6 +176,7 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     const contextSeq = integer(v.contextSeq, 'contextSeq'), focusEpoch = integer(v.focusEpoch, 'focusEpoch');
     if (!contextSeq || (v.focused && !focusEpoch)) throw fail('INVALID_ARGUMENT', '焦点状态序号无效');
     const view = { viewId: string(v.viewId, 'viewId'), instanceId: string(v.instanceId, 'instanceId'), sessionId: string(v.sessionId, 'sessionId', 256, true), sessionTitle: string(v.sessionTitle, 'sessionTitle', 500, true), focused: v.focused, supported: v.supported, version: string(v.version, 'version', 100), contextSeq, focusEpoch, seenAt: now() };
+    if (Number.isSafeInteger(v.desktopPid) && v.desktopPid > 1 && v.desktopPid <= 0x7fffffff) view.desktopPid = v.desktopPid;
     if (v.compatibility !== undefined) {
       const c = v.compatibility;
       if (!object(c) || c.protocol !== 1 || !['checking', 'ready', 'incompatible'].includes(c.state)) throw fail('COMPATIBILITY_PROTOCOL_UNSUPPORTED', '兼容检查协议不匹配，请同时更新回看与插件。');
@@ -360,11 +361,18 @@ async function createRecallService({ userData, callDream, now = Date.now, naviga
     if (!['auto', '2d', '3d'].includes(mode)) throw fail('INVALID_ARGUMENT', '外观模式无效');
     data.mode = mode; await persist(); changed();
   }
-  function requestNavigation(id) {
-    const item = getItem(id); if (!item) return Promise.reject(fail('NOT_FOUND', '找不到回看条目'));
-    const candidates = [...views.values()].filter(v => v.instanceId === item.externalSource.instanceId && liveView(v));
-    const preferred = candidates.find(v => v.viewId === data.active?.viewId) || candidates.sort((a, b) => b.focusEpoch - a.focusEpoch || b.seenAt - a.seenAt)[0];
-    if (!preferred) return Promise.reject(fail('HARNESS_UNAVAILABLE', 'Harness 未连接或版本不兼容，原文仍保留在回看'));
+  async function requestNavigation(id) {
+    const item = getItem(id); if (!item) throw fail('NOT_FOUND', '找不到回看条目');
+    const candidates = [...views.values()].filter(v => v.instanceId === item.externalSource.instanceId);
+    const choose = available => available.find(v => v.viewId === data.active?.viewId)
+      || available.sort((a, b) => b.focusEpoch - a.focusEpoch || b.seenAt - a.seenAt)[0];
+    const live = choose(candidates.filter(liveView));
+    // A minimized native window can stop sending heartbeats. Its last
+    // compatible view can resume polling once the verified app is reopened.
+    const preferred = live || (activateHarness && choose(candidates.filter(v => v.desktopPid && compatibleHarnessView(v))));
+    const activated = preferred?.desktopPid && activateHarness && await activateHarness(preferred.desktopPid);
+    if (closed) throw fail('CLOSED', '浮窗已退出');
+    if (!preferred || (!live && !activated)) throw fail('HARNESS_UNAVAILABLE', 'Harness 未连接或版本不兼容，原文仍保留在回看');
     const commandId = crypto.randomUUID();
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => { navigations.delete(commandId); reject(fail('NAVIGATION_TIMEOUT', '未能确认原文位置，请在 Harness 中检查')); }, navigationTimeoutMs);
